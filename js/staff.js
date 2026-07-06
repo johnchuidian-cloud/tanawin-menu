@@ -288,7 +288,7 @@ function menuRow(m, catItems, idx) {
     ${m.image_url ? `<img src="${m.image_url}" alt="">` : `<div class="item-placeholder">${FLOWER_SVG}</div>`}
     <div class="menu-row-info">
       <strong>${esc(m.name)}</strong>
-      <small>${peso(m.price)}${m.is_available ? '' : ' · hidden from guests'}</small>
+      <small>${peso(m.price)}${Array.isArray(m.options) && m.options.length ? ' · ' + esc(m.options.join('/')) : ''}${m.is_available ? '' : ' · hidden from guests'}</small>
     </div>
     <div class="menu-row-actions">
       <button class="icon-btn" title="Move up" ${idx === 0 ? 'disabled' : ''}>↑</button>
@@ -341,6 +341,7 @@ function openItemSheet(m) {
   $('itemCategory').value = m ? m.category : CATEGORIES[0];
   $('itemDescription').value = m ? (m.description || '') : '';
   $('itemPrice').value = m ? m.price : '';
+  $('itemOptions').value = m && Array.isArray(m.options) ? m.options.join(', ') : '';
   $('itemAvailable').checked = m ? m.is_available : true;
   $('itemDeleteBtn').classList.toggle('hidden', !m);
   $('itemPhotoInput').value = '';
@@ -382,12 +383,14 @@ $('itemForm').onsubmit = async e => {
   btn.disabled = true;
   try {
     const existing = state.menu.find(x => x.id === state.editingId);
+    const opts = $('itemOptions').value.split(',').map(s => s.trim()).filter(Boolean);
     const fields = {
       name: $('itemName').value.trim(),
       category: $('itemCategory').value,
       description: $('itemDescription').value.trim() || null,
       price: Number($('itemPrice').value),
       is_available: $('itemAvailable').checked,
+      options: opts.length ? opts : null,
     };
 
     let id = state.editingId;

@@ -10,17 +10,25 @@ const $ = id => document.getElementById(id);
 
 const state = {
   items: new Map(),          // id -> menu item row
-  cart: new Map(),           // id -> qty
+  cart: new Map(),           // "id|option" -> { id, option, qty }
   diningIn: false,
   proofFile: null,
 };
+
+const cartKey = (id, option) => `${id}|${option || ''}`;
+
+function itemQtyTotal(id) {
+  let n = 0;
+  for (const e of state.cart.values()) if (e.id === id) n += e.qty;
+  return n;
+}
 
 // ── Load & render the menu ──────────────────────────────────────────
 
 async function loadMenu() {
   const { data, error } = await db
     .from('menu_items')
-    .select('id, name, category, description, image_url, price, sort_order')
+    .select('id, name, category, description, image_url, price, sort_order, options')
     .order('sort_order')
     .order('name');
 
@@ -92,26 +100,68 @@ function itemCard(it) {
 
 function renderItemActions(card, id) {
   const box = card.querySelector('.item-actions');
-  const qty = state.cart.get(id) || 0;
+  const it = state.items.get(id);
+  const hasOptions = Array.isArray(it?.options) && it.options.length > 0;
+
+  if (hasOptions) {
+    // Option items always go through the chooser; quantities are adjusted
+    // per option line in the cart.
+    const total = itemQtyTotal(id);
+    box.innerHTML = `
+      ${total ? `<span class="in-cart-pill">${total} in cart</span>` : ''}
+      <button class="add-btn" aria-label="Choose and add">+</button>`;
+    box.querySelector('.add-btn').onclick = () => openOptionPicker(it);
+    return;
+  }
+
+  const qty = state.cart.get(cartKey(id, null))?.qty || 0;
   if (!qty) {
     box.innerHTML = `<button class="add-btn" aria-label="Add to order">+</button>`;
-    box.querySelector('button').onclick = () => setQty(id, 1);
+    box.querySelector('button').onclick = () => setQty(id, null, 1);
   } else {
     box.innerHTML = `
       <div class="qty-stepper">
         <button aria-label="Remove one">−</button><span>${qty}</span><button aria-label="Add one">+</button>
       </div>`;
     const [minus, plus] = box.querySelectorAll('button');
-    minus.onclick = () => setQty(id, qty - 1);
-    plus.onclick = () => setQty(id, qty + 1);
+    minus.onclick = () => setQty(id, null, qty - 1);
+    plus.onclick = () => setQty(id, null, qty + 1);
   }
 }
 
+// ── Option picker (e.g. Hot / Iced) ─────────────────────────────────
+
+function openOptionPicker(it) {
+  $('optTitle').textContent = it.name;
+  const box = $('optButtons');
+  box.innerHTML = '';
+  it.options.forEach(opt => {
+    const b = document.createElement('button');
+    b.className = 'opt-btn';
+    b.textContent = opt;
+    b.onclick = () => {
+      const cur = state.cart.get(cartKey(it.id, opt))?.qty || 0;
+      setQty(it.id, opt, cur + 1);
+      closeOptionPicker();
+    };
+    box.appendChild(b);
+  });
+  $('optBackdrop').classList.remove('hidden');
+  $('optSheet').classList.remove('hidden');
+}
+
+function closeOptionPicker() {
+  $('optBackdrop').classList.add('hidden');
+  $('optSheet').classList.add('hidden');
+}
+$('optBackdrop').onclick = closeOptionPicker;
+
 // ── Cart ────────────────────────────────────────────────────────────
 
-function setQty(id, qty) {
-  if (qty <= 0) state.cart.delete(id);
-  else state.cart.set(id, Math.min(qty, 50));
+function setQty(id, option, qty) {
+  const key = cartKey(id, option);
+  if (qty <= 0) state.cart.delete(key);
+  else state.cart.set(key, { id, option: option || null, qty: Math.min(qty, 50) });
 
   const card = document.querySelector(`.item-card[data-id="${id}"]`);
   if (card) renderItemActions(card, id);
@@ -125,11 +175,11 @@ function setQty(id, qty) {
 
 function cartTotals() {
   let count = 0, total = 0;
-  for (const [id, qty] of state.cart) {
-    const it = state.items.get(id);
+  for (const e of state.cart.values()) {
+    const it = state.items.get(e.id);
     if (!it) continue;
-    count += qty;
-    total += it.price * qty;
+    count += e.qty;
+    total += it.price * e.qty;
   }
   return { count, total };
 }
@@ -144,39 +194,44 @@ function updateCartBar() {
 function renderCartLines() {
   const ul = $('cartLines');
   ul.innerHTML = '';
-  for (const [id, qty] of state.cart) {
-    const it = state.items.get(id);
+  for (const e of state.cart.values()) {
+    const it = state.items.get(e.id);
     if (!it) continue;
     const li = document.createElement('li');
     li.innerHTML = `
-      <div class="cart-line-name">${esc(it.name)}<small>${peso(it.price)} each</small></div>
+      <div class="cart-line-name">${esc(it.name)}${e.option ? ` <em>· ${esc(e.option)}</em>` : ''}
+        <small>${peso(it.price)} each</small></div>
       <div class="qty-stepper">
-        <button aria-label="Remove one">−</button><span>${qty}</span><button aria-label="Add one">+</button>
+        <button aria-label="Remove one">−</button><span>${e.qty}</span><button aria-label="Add one">+</button>
       </div>
-      <strong>${peso(it.price * qty)}</strong>`;
+      <strong>${peso(it.price * e.qty)}</strong>`;
     const [minus, plus] = li.querySelectorAll('button');
-    minus.onclick = () => setQty(id, qty - 1);
-    plus.onclick = () => setQty(id, qty + 1);
+    minus.onclick = () => setQty(e.id, e.option, e.qty - 1);
+    plus.onclick = () => setQty(e.id, e.option, e.qty + 1);
     ul.appendChild(li);
   }
   $('cartTotal').textContent = peso(cartTotals().total);
 }
 
 function saveCart() {
-  localStorage.setItem('tanawin-cart', JSON.stringify([...state.cart]));
+  localStorage.setItem('tanawin-cart-v2', JSON.stringify([...state.cart.values()]));
 }
 
 function restoreCart() {
+  localStorage.removeItem('tanawin-cart'); // pre-options format
   try {
-    const saved = JSON.parse(localStorage.getItem('tanawin-cart') || '[]');
-    saved.forEach(([id, qty]) => {
-      if (state.items.has(id)) state.cart.set(id, qty);
+    const saved = JSON.parse(localStorage.getItem('tanawin-cart-v2') || '[]');
+    saved.forEach(e => {
+      const it = state.items.get(e.id);
+      if (!it) return;
+      if (e.option && !(Array.isArray(it.options) && it.options.includes(e.option))) return;
+      state.cart.set(cartKey(e.id, e.option), { id: e.id, option: e.option || null, qty: e.qty });
     });
   } catch { /* fresh start */ }
-  state.cart.forEach((_, id) => {
-    const card = document.querySelector(`.item-card[data-id="${id}"]`);
-    if (card) renderItemActions(card, id);
-  });
+  for (const e of state.cart.values()) {
+    const card = document.querySelector(`.item-card[data-id="${e.id}"]`);
+    if (card) renderItemActions(card, e.id);
+  }
   updateCartBar();
 }
 
@@ -270,7 +325,8 @@ $('placeOrderBtn').onclick = async () => {
       proofUrl = path;
     }
 
-    const items = [...state.cart].map(([menu_item_id, qty]) => ({ menu_item_id, qty }));
+    const items = [...state.cart.values()]
+      .map(e => ({ menu_item_id: e.id, qty: e.qty, option: e.option }));
     const { data, error } = await db.rpc('place_order', {
       p_room_number: state.diningIn ? null : room,
       p_is_dining_in: state.diningIn,

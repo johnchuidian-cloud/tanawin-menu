@@ -107,6 +107,14 @@
     </div>
   </section>
 
+  <!-- Option picker (e.g. Hot / Iced) -->
+  <div class="sheet-backdrop hidden" id="optBackdrop"></div>
+  <section class="sheet opt-sheet hidden" id="optSheet" role="dialog" aria-modal="true" aria-label="Choose an option">
+    <div class="sheet-handle"></div>
+    <h2 id="optTitle"></h2>
+    <div class="opt-buttons" id="optButtons"></div>
+  </section>
+
   <div class="toast hidden" id="toast" role="status"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
