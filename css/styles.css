@@ -306,30 +306,15 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
   margin-bottom: 8px;
   display: block;
 }
-.loc-row { display: flex; gap: 8px; }
-.loc-row input {
-  flex: 1;
+.room-name-input {
+  width: 100%;
+  margin-top: 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 12px;
   font-size: 16px;
   background: #fff;
   color: var(--ink);
-}
-.loc-toggle {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--ink-soft);
-  font-size: 14px;
-  font-weight: 600;
-  padding: 0 14px;
-  cursor: pointer;
-}
-.loc-toggle[aria-pressed="true"] {
-  background: var(--green);
-  border-color: var(--green);
-  color: #fff;
 }
 
 .pay-options { display: flex; flex-direction: column; gap: 8px; }

@@ -206,12 +206,19 @@ $('doneBtn').onclick = () => closeSheet();
 
 // ── Checkout details ────────────────────────────────────────────────
 
-$('diningInBtn').onclick = () => {
-  state.diningIn = !state.diningIn;
-  $('diningInBtn').setAttribute('aria-pressed', String(state.diningIn));
-  $('roomInput').disabled = state.diningIn;
-  if (state.diningIn) $('roomInput').value = '';
-};
+// Location: an explicit either/or — picking "To my room" reveals the
+// room-name field; "Dining in" needs nothing more (one universal QR,
+// no per-table codes — staff serve the dining area directly).
+$('locOptions').addEventListener('change', () => {
+  const choice = document.querySelector('input[name="loc"]:checked')?.value;
+  state.diningIn = choice === 'dining';
+  $('roomInput').classList.toggle('hidden', choice !== 'room');
+  if (choice === 'room') $('roomInput').focus();
+  else $('roomInput').value = '';
+  $('noteInput').placeholder = state.diningIn
+    ? 'e.g. we’re at the table by the garden'
+    : 'e.g. less spicy, extra rice';
+});
 
 // GCash panel: show on selection; hide the whole panel if no QR uploaded yet.
 $('gcashQr').src = GCASH_QR_URL;
@@ -236,9 +243,14 @@ $('proofInput').onchange = () => {
 // ── Place order ─────────────────────────────────────────────────────
 
 $('placeOrderBtn').onclick = async () => {
+  const choice = document.querySelector('input[name="loc"]:checked')?.value;
   const room = $('roomInput').value.trim();
-  if (!state.diningIn && !room) {
-    toast('Please enter your room number, or tap "Dining in".');
+  if (!choice) {
+    toast('Please choose: to your room, or dining in?');
+    return;
+  }
+  if (choice === 'room' && !room) {
+    toast('Please tell us which room you\'re in.');
     return;
   }
   const { count } = cartTotals();
@@ -272,7 +284,7 @@ $('placeOrderBtn').onclick = async () => {
     $('confirmNumber').textContent = `#${data.order_number}`;
     $('confirmDetail').textContent = state.diningIn
       ? `${peso(data.total)} — we'll serve it at your table.`
-      : `${peso(data.total)} — on its way to Room ${room}.`;
+      : `${peso(data.total)} — on its way to ${room}.`;
     openSheet('confirmStep');
 
     state.cart.clear();
