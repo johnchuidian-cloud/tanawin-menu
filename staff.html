@@ -17,26 +17,37 @@
   <section id="loginView" class="login-view hidden">
     <span class="login-flower" data-flower></span>
     <h1>Tanawin Staff</h1>
-    <form id="loginForm">
-      <input type="password" id="loginPin" class="pin-input" placeholder="••••••"
-             inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"
-             aria-label="Staff PIN" required>
-      <button class="btn-primary" type="submit">Enter</button>
+
+    <!-- Step 1: pick your name (mirrors the Kitchen app) -->
+    <div id="userPick">
+      <p class="who-label">Who's using the app?</p>
+      <div id="userList"></div>
+    </div>
+
+    <!-- Step 2: PIN -->
+    <div id="pinStep" class="hidden">
+      <button type="button" class="link-btn back-link" id="pickSomeoneElse">← Pick someone else</button>
+      <p class="welcome" id="pinWelcome"></p>
+      <p class="welcome-sub">Enter your 4-digit PIN</p>
+      <input type="password" id="loginPin" class="pin-input" placeholder="• • • •"
+             inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
+             aria-label="Your PIN">
       <p class="login-error hidden" id="loginError"></p>
-    </form>
+    </div>
   </section>
 
   <!-- App -->
   <div id="appView" class="hidden">
     <header class="staff-header">
       <div class="staff-brand"><span data-flower></span><strong>Tanawin Staff</strong></div>
-      <button class="link-btn" id="logoutBtn">Sign out</button>
+      <div class="staff-me"><span id="currentUserName"></span>
+        <button class="link-btn" id="logoutBtn">Sign out</button></div>
     </header>
 
     <nav class="staff-tabs">
       <button class="tab-btn active" data-tab="orders">Orders <span class="tab-badge hidden" id="activeBadge"></span></button>
       <button class="tab-btn" data-tab="menu">Menu</button>
-      <button class="tab-btn" data-tab="settings">Settings</button>
+      <button class="tab-btn hidden" data-tab="settings" id="settingsTab">Settings</button>
     </nav>
 
     <!-- Orders -->

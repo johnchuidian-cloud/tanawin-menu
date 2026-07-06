@@ -11,3 +11,14 @@ const GCASH_QR_URL = `${SUPABASE_URL}/storage/v1/object/public/menu-images/gcash
 
 // Fixed display order for the 7 categories.
 const CATEGORIES = ['Chicken', 'Seafood', 'Vegetables', 'Silogs', 'Crepes', 'Pika-Pika', 'Beverages'];
+
+// Staff roster — mirrors kitchen_users in the Kitchen app (same people, same
+// PINs). Each maps to a hidden auth account <slug>@tanawin.menu; staff changes
+// need both this list and the auth account updated (ask Claude in a build chat).
+const STAFF_ROSTER = [
+  { name: 'Lexi', role: 'admin', slug: 'lexi' },
+  { name: 'Monique', role: 'staff', slug: 'monique' },
+  { name: 'Disang', role: 'staff', slug: 'disang' },
+  { name: 'Sherill', role: 'staff', slug: 'sherill' },
+  { name: 'Janice', role: 'staff', slug: 'janice' },
+];

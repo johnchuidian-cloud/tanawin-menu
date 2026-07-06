@@ -20,40 +20,80 @@ const state = {
 // ── Auth ────────────────────────────────────────────────────────────
 
 async function boot() {
+  renderUserList();
   const { data: { session } } = await db.auth.getSession();
-  session ? showApp() : showLogin();
+  session ? showApp(session.user) : showLogin();
 }
 
 function showLogin() {
   $('loginView').classList.remove('hidden');
   $('appView').classList.add('hidden');
+  pickUser(null);
 }
 
-async function showApp() {
+async function showApp(user) {
+  const meta = user?.user_metadata || {};
+  $('currentUserName').textContent = meta.name || '';
+  $('settingsTab').classList.toggle('hidden', meta.role !== 'admin');
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   await Promise.all([loadOrders(), loadMenu(), loadSettings()]);
   subscribeOrders();
 }
 
-// PIN login, consistent with the other Tanawin apps. Under the hood the PIN
-// maps to the shared staff auth account so RLS still sees `authenticated`.
-$('loginForm').onsubmit = async e => {
-  e.preventDefault();
+// PIN login mirroring the Kitchen app: pick your name, enter your 4-digit
+// PIN (same people, same PINs). Each person maps to a hidden auth account
+// so RLS still sees `authenticated`.
+let pickedUser = null;
+
+function renderUserList() {
+  const wrap = $('userList');
+  wrap.innerHTML = '';
+  STAFF_ROSTER.forEach(u => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'user-btn';
+    btn.innerHTML = `
+      <span class="avatar ${u.role}">${esc(u.name[0])}</span>
+      <span><span class="un">${esc(u.name)}</span>
+      <span class="ur">${u.role === 'admin' ? 'Admin' : 'Staff'}</span></span>`;
+    btn.onclick = () => pickUser(u);
+    wrap.appendChild(btn);
+  });
+}
+
+function pickUser(u) {
+  pickedUser = u;
+  $('userPick').classList.toggle('hidden', !!u);
+  $('pinStep').classList.toggle('hidden', !u);
   $('loginError').classList.add('hidden');
-  const pin = $('loginPin').value.trim();
-  const { error } = await db.auth.signInWithPassword({
-    email: 'staff@tanawin.menu',
+  $('loginPin').value = '';
+  if (u) {
+    $('pinWelcome').textContent = `Hi ${u.name}`;
+    $('loginPin').focus();
+  }
+}
+
+$('pickSomeoneElse').onclick = () => pickUser(null);
+
+$('loginPin').oninput = async e => {
+  const pin = e.target.value.replace(/\D/g, '').slice(0, 4);
+  e.target.value = pin;
+  $('loginError').classList.add('hidden');
+  if (pin.length !== 4 || !pickedUser) return;
+
+  const { data, error } = await db.auth.signInWithPassword({
+    email: `${pickedUser.slug}@tanawin.menu`,
     password: `tanawin-menu-v1:${pin}`,
   });
   if (error) {
     $('loginPin').value = '';
-    $('loginError').textContent = 'Wrong PIN — try again.';
+    $('loginError').textContent = 'PIN incorrect — try again';
     $('loginError').classList.remove('hidden');
     return;
   }
   primeChime(); // user gesture: unlock audio for order alerts
-  showApp();
+  showApp(data.user);
 };
 
 $('logoutBtn').onclick = async () => {
