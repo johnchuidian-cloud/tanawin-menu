@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Tanawin — Staff</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#933212">
+  <link rel="icon" href="assets/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/staff.css">
+</head>
+<body class="staff-body">
+
+  <!-- Login -->
+  <section id="loginView" class="login-view hidden">
+    <span class="login-flower" data-flower></span>
+    <h1>Tanawin Staff</h1>
+    <form id="loginForm">
+      <input type="password" id="loginPin" class="pin-input" placeholder="••••••"
+             inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"
+             aria-label="Staff PIN" required>
+      <button class="btn-primary" type="submit">Enter</button>
+      <p class="login-error hidden" id="loginError"></p>
+    </form>
+  </section>
+
+  <!-- App -->
+  <div id="appView" class="hidden">
+    <header class="staff-header">
+      <div class="staff-brand"><span data-flower></span><strong>Tanawin Staff</strong></div>
+      <button class="link-btn" id="logoutBtn">Sign out</button>
+    </header>
+
+    <nav class="staff-tabs">
+      <button class="tab-btn active" data-tab="orders">Orders <span class="tab-badge hidden" id="activeBadge"></span></button>
+      <button class="tab-btn" data-tab="menu">Menu</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <!-- Orders -->
+    <main id="tab-orders" class="tab-panel">
+      <div class="filter-row">
+        <button class="cat-pill active" data-filter="active">Active</button>
+        <button class="cat-pill" data-filter="done">Done</button>
+      </div>
+      <div id="ordersList"></div>
+    </main>
+
+    <!-- Menu management -->
+    <main id="tab-menu" class="tab-panel hidden">
+      <button class="btn-primary" id="addItemBtn">+ Add menu item</button>
+      <div id="menuList"></div>
+    </main>
+
+    <!-- Settings -->
+    <main id="tab-settings" class="tab-panel hidden">
+      <form id="settingsForm" class="settings-card">
+        <label class="field">
+          <span class="field-label">Staff SMS numbers (comma-separated)</span>
+          <input type="text" id="smsNumbers" placeholder="09171234567, 09181234567">
+        </label>
+        <label class="switch-row">
+          <span class="field-label">SMS notifications</span>
+          <input type="checkbox" id="smsEnabled">
+        </label>
+        <button class="btn-primary" type="submit">Save settings</button>
+      </form>
+
+      <div class="settings-card">
+        <span class="field-label">Payment QR (shown at checkout)</span>
+        <img id="settingsQr" class="settings-qr" alt="Current payment QR">
+        <label class="proof-label">
+          <input type="file" id="qrUpload" accept="image/*">
+          <span>Replace payment QR image</span>
+        </label>
+      </div>
+    </main>
+  </div>
+
+  <!-- Item edit sheet -->
+  <div class="sheet-backdrop hidden" id="itemBackdrop"></div>
+  <section class="sheet hidden" id="itemSheet" role="dialog" aria-modal="true">
+    <div class="sheet-handle"></div>
+    <h2 id="itemSheetTitle">Edit item</h2>
+    <form id="itemForm">
+      <div class="photo-row">
+        <div id="itemPhotoBox" class="item-placeholder"></div>
+        <div class="photo-btns">
+          <label class="proof-label"><input type="file" id="itemPhotoInput" accept="image/*"><span>Upload photo</span></label>
+          <button type="button" class="link-btn danger hidden" id="itemPhotoDelete">Remove photo</button>
+        </div>
+      </div>
+      <label class="field"><span class="field-label">Name</span>
+        <input type="text" id="itemName" required maxlength="80"></label>
+      <label class="field"><span class="field-label">Category</span>
+        <select id="itemCategory"></select></label>
+      <label class="field"><span class="field-label">Description</span>
+        <textarea id="itemDescription" rows="2" maxlength="200"></textarea></label>
+      <label class="field"><span class="field-label">Price (₱)</span>
+        <input type="number" id="itemPrice" min="0" step="0.01" inputmode="decimal" required></label>
+      <label class="switch-row"><span class="field-label">Available</span>
+        <input type="checkbox" id="itemAvailable" checked></label>
+      <button class="btn-primary" type="submit" id="itemSaveBtn">Save</button>
+      <button type="button" class="btn-ghost danger hidden" id="itemDeleteBtn">Delete this item</button>
+      <button type="button" class="btn-ghost" id="itemCancelBtn">Cancel</button>
+    </form>
+  </section>
+
+  <div class="toast hidden" id="toast" role="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/staff.js"></script>
+</body>
+</html>

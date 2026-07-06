@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Tanawin — Menu</title>
+  <meta name="description" content="Tanawin Bed &amp; Breakfast — order from your room or table.">
+  <meta name="theme-color" content="#933212">
+  <link rel="icon" href="assets/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <span class="header-flower" data-flower></span>
+    <h1>Tanawin</h1>
+    <p>Bed &amp; Breakfast · Bataan</p>
+  </header>
+
+  <nav class="cat-nav" id="catNav" aria-label="Menu categories"></nav>
+
+  <main id="menu" aria-live="polite">
+    <div class="loading" id="loading">
+      <span class="loading-flower" data-flower></span>
+      <p>Setting the table…</p>
+    </div>
+  </main>
+
+  <!-- Sticky cart bar -->
+  <button class="cart-bar hidden" id="cartBar" aria-label="View cart">
+    <span id="cartBarCount"></span>
+    <span>View cart</span>
+    <span id="cartBarTotal"></span>
+  </button>
+
+  <!-- Cart / checkout sheet -->
+  <div class="sheet-backdrop hidden" id="sheetBackdrop"></div>
+  <section class="sheet hidden" id="cartSheet" role="dialog" aria-modal="true" aria-label="Your order">
+    <div class="sheet-handle"></div>
+
+    <!-- Step 1: cart review -->
+    <div id="cartStep">
+      <h2>Your order</h2>
+      <ul class="cart-lines" id="cartLines"></ul>
+      <div class="cart-total-row"><span>Total</span><strong id="cartTotal"></strong></div>
+      <button class="btn-primary" id="toCheckoutBtn">Continue</button>
+    </div>
+
+    <!-- Step 2: details -->
+    <div id="checkoutStep" class="hidden">
+      <h2>Almost there</h2>
+
+      <fieldset class="field">
+        <legend>Where should we bring it?</legend>
+        <div class="loc-row">
+          <input type="text" id="roomInput" inputmode="numeric" autocomplete="off"
+                 placeholder="Room number">
+          <button type="button" class="loc-toggle" id="diningInBtn" aria-pressed="false">Dining in</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>How would you like to pay?</legend>
+        <div class="pay-options" id="payOptions">
+          <label><input type="radio" name="pay" value="room" checked>
+            <span><strong>Charge to room</strong><small>Settle at checkout</small></span></label>
+          <label><input type="radio" name="pay" value="gcash">
+            <span><strong>GCash / Bank transfer</strong><small>Pay now via QR</small></span></label>
+          <label><input type="radio" name="pay" value="cash">
+            <span><strong>Cash</strong><small>Pay on delivery</small></span></label>
+        </div>
+      </fieldset>
+
+      <div class="gcash-panel hidden" id="gcashPanel">
+        <img id="gcashQr" alt="GCash QR code" src="">
+        <p>Pay with GCash or bank transfer (InstaPay), then attach a screenshot of the payment (optional).</p>
+        <label class="proof-label">
+          <input type="file" id="proofInput" accept="image/*">
+          <span id="proofLabelText">Attach payment screenshot</span>
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field-label">Note for the kitchen (optional)</span>
+        <textarea id="noteInput" rows="2" maxlength="300" placeholder="e.g. less spicy, extra rice"></textarea>
+      </label>
+
+      <button class="btn-primary" id="placeOrderBtn">Place order</button>
+      <button class="btn-ghost" id="backToCartBtn">Back</button>
+    </div>
+
+    <!-- Step 3: confirmation -->
+    <div id="confirmStep" class="hidden">
+      <span class="confirm-flower" data-flower></span>
+      <h2>Order received!</h2>
+      <p class="confirm-number">Order <strong id="confirmNumber"></strong></p>
+      <p id="confirmDetail"></p>
+      <button class="btn-primary" id="doneBtn">Back to menu</button>
+    </div>
+  </section>
+
+  <div class="toast hidden" id="toast" role="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/menu.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
+  <!-- Tanawin flower/starburst accent (the mark above the "i" in the wordmark).
+       Hand-drawn feel: petals at irregular angles and lengths.
+       Uses currentColor so it inherits the surrounding text color. -->
+  <g transform="translate(16 16)">
+    <ellipse rx="1.7" ry="7.2" cy="-8.2" transform="rotate(0)"/>
+    <ellipse rx="1.5" ry="5.6" cy="-6.6" transform="rotate(47)"/>
+    <ellipse rx="1.6" ry="6.8" cy="-7.6" transform="rotate(88)"/>
+    <ellipse rx="1.4" ry="5.2" cy="-6.2" transform="rotate(128)"/>
+    <ellipse rx="1.6" ry="6.4" cy="-7.2" transform="rotate(171)"/>
+    <ellipse rx="1.5" ry="5.8" cy="-6.8" transform="rotate(217)"/>
+    <ellipse rx="1.7" ry="7.0" cy="-7.9" transform="rotate(262)"/>
+    <ellipse rx="1.4" ry="5.4" cy="-6.4" transform="rotate(309)"/>
+    <circle r="2.1"/>
+  </g>
+</svg>
