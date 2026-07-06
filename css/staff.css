@@ -12,7 +12,9 @@
 }
 .login-flower svg { width: 44px; height: 44px; color: var(--terracotta); }
 .login-view h1 { color: var(--terracotta); margin: 10px 0 2px; font-size: 26px; }
-.login-sub { color: var(--ink-soft); font-size: 14px; margin-bottom: 22px; }
+.login-sub { color: var(--ink-soft); font-size: 14px; margin-bottom: 8px; }
+.login-back { margin-bottom: 20px; }
+.login-back a { color: var(--ink-soft); font-size: 13px; opacity: 0.8; }
 .login-view input {
   width: 100%;
   border: 1px solid var(--line);
