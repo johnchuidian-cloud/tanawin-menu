@@ -11,11 +11,16 @@ const state = {
   orders: new Map(),      // id -> order row (with items)
   filter: 'active',
   menu: [],
+  categories: CATEGORIES, // replaced by the categories table on load
   editingId: null,        // menu item being edited (null = new)
   pendingPhoto: null,     // File chosen in the edit sheet
   photoRemoved: false,
   channel: null,
 };
+
+// Options may be plain strings ("Hot") or priced ({label:"for 2", price:479}).
+const normalizeOptions = m => !Array.isArray(m?.options) ? [] :
+  m.options.map(o => typeof o === 'string' ? { label: o, price: null } : { label: o.label, price: o.price ?? null });
 
 // ── Auth ────────────────────────────────────────────────────────────
 
@@ -260,17 +265,43 @@ async function setStatus(id, status) {
 // ── Menu management ─────────────────────────────────────────────────
 
 async function loadMenu() {
-  const { data, error } = await db.from('menu_items')
-    .select('*').order('sort_order').order('name');
-  if (error) { toast('Could not load menu.'); console.error(error); return; }
-  state.menu = data;
+  const [menuRes, catRes] = await Promise.all([
+    db.from('menu_items').select('*').order('sort_order').order('name'),
+    db.from('categories').select('name, sort_order').order('sort_order'),
+  ]);
+  if (menuRes.error) { toast('Could not load menu.'); console.error(menuRes.error); return; }
+  if (!catRes.error && catRes.data?.length) state.categories = catRes.data.map(c => c.name);
+  state.menu = menuRes.data;
+  renderCategorySelect();
   renderMenuList();
 }
+
+function renderCategorySelect(selected) {
+  $('itemCategory').innerHTML =
+    state.categories.map(c => `<option>${esc(c)}</option>`).join('') +
+    '<option value="__new__">+ New category…</option>';
+  if (selected) $('itemCategory').value = selected;
+}
+
+// Adding a category mid-edit: prompt, insert, keep it selected.
+$('itemCategory').addEventListener('change', async () => {
+  if ($('itemCategory').value !== '__new__') return;
+  const name = (prompt('Name the new category (e.g. Burgers):') || '').trim();
+  if (!name) { renderCategorySelect(state.categories[0]); return; }
+  if (!state.categories.includes(name)) {
+    const { error } = await db.from('categories')
+      .insert({ name, sort_order: state.categories.length + 1 });
+    if (error) { toast('Could not add category.'); console.error(error); renderCategorySelect(state.categories[0]); return; }
+    state.categories.push(name);
+    toast(`Category "${name}" added.`);
+  }
+  renderCategorySelect(name);
+});
 
 function renderMenuList() {
   const wrap = $('menuList');
   wrap.innerHTML = '';
-  CATEGORIES.forEach(cat => {
+  state.categories.forEach(cat => {
     const items = state.menu.filter(m => m.category === cat);
     if (!items.length) return;
     const label = document.createElement('div');
@@ -288,7 +319,7 @@ function menuRow(m, catItems, idx) {
     ${m.image_url ? `<img src="${m.image_url}" alt="">` : `<div class="item-placeholder">${FLOWER_SVG}</div>`}
     <div class="menu-row-info">
       <strong>${esc(m.name)}</strong>
-      <small>${peso(m.price)}${Array.isArray(m.options) && m.options.length ? ' · ' + esc(m.options.join('/')) : ''}${m.is_available ? '' : ' · hidden from guests'}</small>
+      <small>${peso(m.price)}${normalizeOptions(m).length ? ' · ' + esc(normalizeOptions(m).map(o => o.label).join(' / ')) : ''}${m.is_available ? '' : ' · hidden from guests'}</small>
     </div>
     <div class="menu-row-actions">
       <button class="icon-btn" title="Move up" ${idx === 0 ? 'disabled' : ''}>↑</button>
@@ -328,8 +359,6 @@ async function swapOrder(a, b) {
 
 // ── Item edit sheet ─────────────────────────────────────────────────
 
-$('itemCategory').innerHTML = CATEGORIES.map(c => `<option>${c}</option>`).join('');
-
 $('addItemBtn').onclick = () => openItemSheet(null);
 
 function openItemSheet(m) {
@@ -338,10 +367,11 @@ function openItemSheet(m) {
   state.photoRemoved = false;
   $('itemSheetTitle').textContent = m ? 'Edit item' : 'New item';
   $('itemName').value = m ? m.name : '';
-  $('itemCategory').value = m ? m.category : CATEGORIES[0];
+  renderCategorySelect(m ? m.category : state.categories[0]);
   $('itemDescription').value = m ? (m.description || '') : '';
   $('itemPrice').value = m ? m.price : '';
-  $('itemOptions').value = m && Array.isArray(m.options) ? m.options.join(', ') : '';
+  $('itemOptions').value = normalizeOptions(m)
+    .map(o => o.price != null ? `${o.label} = ${o.price}` : o.label).join(', ');
   $('itemAvailable').checked = m ? m.is_available : true;
   $('itemDeleteBtn').classList.toggle('hidden', !m);
   $('itemPhotoInput').value = '';
@@ -383,7 +413,13 @@ $('itemForm').onsubmit = async e => {
   btn.disabled = true;
   try {
     const existing = state.menu.find(x => x.id === state.editingId);
-    const opts = $('itemOptions').value.split(',').map(s => s.trim()).filter(Boolean);
+    // "for 2 = 479, for 6 = 1099" or just "Hot, Iced" (no price = base price)
+    const opts = $('itemOptions').value.split(',').map(s => s.trim()).filter(Boolean)
+      .map(s => {
+        const m2 = s.match(/^(.*?)\s*=\s*([\d.]+)$/);
+        return m2 ? { label: m2[1].trim(), price: Number(m2[2]) } : { label: s, price: null };
+      });
+    if ($('itemCategory').value === '__new__') { toast('Pick a category first.'); btn.disabled = false; return; }
     const fields = {
       name: $('itemName').value.trim(),
       category: $('itemCategory').value,

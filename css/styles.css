@@ -387,17 +387,24 @@ textarea {
 /* ── Option picker ──────────────────────────────────── */
 
 .opt-sheet h2 { text-align: center; }
-.opt-buttons { display: flex; gap: 10px; padding: 4px 0 10px; }
+.opt-buttons { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 0 10px; }
 .opt-btn {
-  flex: 1;
+  flex: 1 1 40%;
   border: 1.5px solid var(--terracotta);
   border-radius: 12px;
   background: #fff;
   color: var(--terracotta);
   font-size: 16px;
   font-weight: 700;
-  padding: 16px;
+  padding: 14px 10px;
   cursor: pointer;
+}
+.opt-btn small {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-top: 2px;
 }
 .opt-btn:active { background: var(--terracotta); color: var(--cream); }
 .in-cart-pill {

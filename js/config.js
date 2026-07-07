@@ -9,8 +9,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // the checkout hides the GCash panel if this image doesn't exist yet.
 const GCASH_QR_URL = `${SUPABASE_URL}/storage/v1/object/public/menu-images/gcash-qr.jpg`;
 
-// Fixed display order for the 7 categories.
-const CATEGORIES = ['Chicken', 'Seafood', 'Vegetables', 'Silogs', 'Crepes', 'Pika-Pika', 'Beverages'];
+// Fallback category order if the categories table can't be reached.
+// The live list (staff-expandable) comes from the `categories` table.
+const CATEGORIES = ['Chicken', 'Seafood', 'Vegetables', 'Soup & Pancit', 'Crepes', 'Pika-Pika', 'Silogs', 'Beverages', 'Extras'];
 
 // Room list (from Lexi, 2026-07-07) — guests tap to pick at checkout.
 const ROOMS = [

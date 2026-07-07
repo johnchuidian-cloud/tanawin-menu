@@ -11,12 +11,37 @@ const $ = id => document.getElementById(id);
 const state = {
   items: new Map(),          // id -> menu item row
   cart: new Map(),           // "id|option" -> { id, option, qty }
+  categories: CATEGORIES,    // replaced by the categories table on load
   diningIn: false,
   roomName: null,
   proofFile: null,
 };
 
 const cartKey = (id, option) => `${id}|${option || ''}`;
+
+// Options may be plain strings ("Hot") or priced ({label:"for 2", price:479}).
+function normalizeOptions(it) {
+  if (!Array.isArray(it?.options)) return [];
+  return it.options.map(o =>
+    typeof o === 'string' ? { label: o, price: null } : { label: o.label, price: o.price ?? null });
+}
+
+function priceFor(it, optionLabel) {
+  if (optionLabel) {
+    const opt = normalizeOptions(it).find(o => o.label === optionLabel);
+    if (opt && opt.price != null) return Number(opt.price);
+  }
+  return Number(it.price);
+}
+
+// Card price label: "from ₱400" when the options carry different prices.
+function priceLabel(it) {
+  const opts = normalizeOptions(it);
+  const prices = opts.map(o => o.price != null ? Number(o.price) : Number(it.price));
+  if (!prices.length) return peso(it.price);
+  const min = Math.min(...prices), max = Math.max(...prices);
+  return max > min ? `from ${peso(min)}` : peso(min);
+}
 
 function itemQtyTotal(id) {
   let n = 0;
@@ -27,25 +52,30 @@ function itemQtyTotal(id) {
 // ── Load & render the menu ──────────────────────────────────────────
 
 async function loadMenu() {
-  const { data, error } = await db
-    .from('menu_items')
-    .select('id, name, category, description, image_url, price, sort_order, options')
-    .order('sort_order')
-    .order('name');
+  const [menuRes, catRes] = await Promise.all([
+    db.from('menu_items')
+      .select('id, name, category, description, image_url, price, sort_order, options')
+      .order('sort_order')
+      .order('name'),
+    db.from('categories').select('name, sort_order').order('sort_order'),
+  ]);
 
-  if (error) {
+  if (menuRes.error) {
     $('loading').innerHTML = '<p>Could not load the menu. Please check your connection and refresh.</p>';
-    console.error(error);
+    console.error(menuRes.error);
     return;
   }
+  if (!catRes.error && catRes.data?.length) {
+    state.categories = catRes.data.map(c => c.name);
+  }
 
-  data.forEach(it => state.items.set(it.id, it));
-  renderMenu(data);
+  menuRes.data.forEach(it => state.items.set(it.id, it));
+  renderMenu(menuRes.data);
   restoreCart();
 }
 
 function renderMenu(items) {
-  const byCat = new Map(CATEGORIES.map(c => [c, []]));
+  const byCat = new Map(state.categories.map(c => [c, []]));
   items.forEach(it => { if (byCat.has(it.category)) byCat.get(it.category).push(it); });
 
   const nav = $('catNav');
@@ -91,7 +121,7 @@ function itemCard(it) {
     <div class="item-info">
       <h3>${esc(it.name)}</h3>
       ${it.description ? `<p>${esc(it.description)}</p>` : ''}
-      <div class="item-price">${peso(it.price)}</div>
+      <div class="item-price">${priceLabel(it)}</div>
     </div>
     <div class="item-actions"></div>`;
 
@@ -136,13 +166,13 @@ function openOptionPicker(it) {
   $('optTitle').textContent = it.name;
   const box = $('optButtons');
   box.innerHTML = '';
-  it.options.forEach(opt => {
+  normalizeOptions(it).forEach(opt => {
     const b = document.createElement('button');
     b.className = 'opt-btn';
-    b.textContent = opt;
+    b.innerHTML = `${esc(opt.label)}<small>${peso(priceFor(it, opt.label))}</small>`;
     b.onclick = () => {
-      const cur = state.cart.get(cartKey(it.id, opt))?.qty || 0;
-      setQty(it.id, opt, cur + 1);
+      const cur = state.cart.get(cartKey(it.id, opt.label))?.qty || 0;
+      setQty(it.id, opt.label, cur + 1);
       closeOptionPicker();
     };
     box.appendChild(b);
@@ -180,7 +210,7 @@ function cartTotals() {
     const it = state.items.get(e.id);
     if (!it) continue;
     count += e.qty;
-    total += it.price * e.qty;
+    total += priceFor(it, e.option) * e.qty;
   }
   return { count, total };
 }
@@ -198,14 +228,15 @@ function renderCartLines() {
   for (const e of state.cart.values()) {
     const it = state.items.get(e.id);
     if (!it) continue;
+    const unit = priceFor(it, e.option);
     const li = document.createElement('li');
     li.innerHTML = `
       <div class="cart-line-name">${esc(it.name)}${e.option ? ` <em>· ${esc(e.option)}</em>` : ''}
-        <small>${peso(it.price)} each</small></div>
+        <small>${peso(unit)} each</small></div>
       <div class="qty-stepper">
         <button aria-label="Remove one">−</button><span>${e.qty}</span><button aria-label="Add one">+</button>
       </div>
-      <strong>${peso(it.price * e.qty)}</strong>`;
+      <strong>${peso(unit * e.qty)}</strong>`;
     const [minus, plus] = li.querySelectorAll('button');
     minus.onclick = () => setQty(e.id, e.option, e.qty - 1);
     plus.onclick = () => setQty(e.id, e.option, e.qty + 1);
@@ -225,7 +256,7 @@ function restoreCart() {
     saved.forEach(e => {
       const it = state.items.get(e.id);
       if (!it) return;
-      if (e.option && !(Array.isArray(it.options) && it.options.includes(e.option))) return;
+      if (e.option && !normalizeOptions(it).some(o => o.label === e.option)) return;
       state.cart.set(cartKey(e.id, e.option), { id: e.id, option: e.option || null, qty: e.qty });
     });
   } catch { /* fresh start */ }
