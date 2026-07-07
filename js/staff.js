@@ -201,7 +201,7 @@ function orderCard(o) {
       ? '<span class="chip pay-gcash">GCash / Bank</span>'
       : '<span class="chip pay-cash">Cash</span>';
 
-  const doneChip = o.status === 'delivered' ? '<span class="chip status-chip-delivered">Delivered</span>'
+  const doneChip = o.status === 'delivered' ? '<span class="chip status-chip-delivered">Ready · sent out</span>'
     : o.status === 'cancelled' ? '<span class="chip status-chip-cancelled">Cancelled</span>' : '';
 
   card.innerHTML = `
@@ -230,10 +230,10 @@ function orderCard(o) {
 
   const actions = card.querySelector('.order-actions');
   if (o.status === 'new') {
-    actions.appendChild(actionBtn('Start preparing', () => setStatus(o.id, 'preparing')));
+    actions.appendChild(actionBtn('Start prepping', () => setStatus(o.id, 'preparing')));
     actions.appendChild(cancelBtn(o.id));
   } else if (o.status === 'preparing') {
-    actions.appendChild(actionBtn('Mark delivered', () => setStatus(o.id, 'delivered')));
+    actions.appendChild(actionBtn('Order ready 🛎', () => setStatus(o.id, 'delivered')));
     actions.appendChild(cancelBtn(o.id));
   }
   return card;

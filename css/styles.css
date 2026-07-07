@@ -380,6 +380,79 @@ textarea {
 }
 
 #confirmStep { text-align: center; padding: 10px 0 4px; }
+
+/* ── Status tracker ─────────────────────────────────── */
+
+.tracker {
+  list-style: none;
+  text-align: left;
+  margin: 18px auto 6px;
+  max-width: 300px;
+}
+.tracker li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  font-weight: 600;
+  opacity: 0.55;
+}
+.tracker .dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid var(--line);
+  background: #fff;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+.tracker li.done { opacity: 1; }
+.tracker li.done .dot { border-color: var(--green); background: var(--green); }
+.tracker li.done .dot::after { content: "✓"; color: #fff; font-weight: 800; }
+.tracker li.current {
+  opacity: 1;
+  color: var(--terracotta);
+}
+.tracker li.current .dot {
+  border-color: var(--terracotta);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(154, 53, 24, 0.35); }
+  50% { box-shadow: 0 0 0 7px rgba(154, 53, 24, 0); }
+}
+.tracker-hint { font-size: 12.5px; color: var(--ink-soft); margin: 10px 0 2px; }
+.tracker-refresh { font-weight: 700; color: var(--terracotta); }
+#confirmStep.is-ready h2 { color: var(--green); }
+
+/* ── Active-order banner ────────────────────────────── */
+
+.order-banner {
+  position: fixed;
+  left: 14px;
+  right: 14px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 29;
+  max-width: 612px;
+  margin: 0 auto;
+  border: none;
+  border-radius: 12px;
+  background: var(--amber);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 3px 10px rgba(61, 35, 23, 0.18);
+}
+.order-banner.ready { background: var(--green); }
+.order-banner.raised { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 68px); }
 .confirm-flower svg { width: 46px; height: 46px; color: var(--terracotta); }
 .confirm-number { font-size: 22px; margin: 10px 0 6px; color: var(--terracotta); }
 #confirmDetail { color: var(--ink-soft); font-size: 14px; }

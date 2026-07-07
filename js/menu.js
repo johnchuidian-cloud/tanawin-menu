@@ -220,6 +220,7 @@ function updateCartBar() {
   $('cartBar').classList.toggle('hidden', count === 0);
   $('cartBarCount').textContent = count;
   $('cartBarTotal').textContent = peso(total);
+  $('orderBanner').classList.toggle('raised', count > 0);
 }
 
 function renderCartLines() {
@@ -280,6 +281,8 @@ function openSheet(step) {
 function closeSheet() {
   $('sheetBackdrop').classList.add('hidden');
   $('cartSheet').classList.add('hidden');
+  const t = trackedOrder();
+  if (t) renderTracker(t.status); // sheet closed → surface the banner
 }
 
 $('cartBar').onclick = () => openSheet('cartStep');
@@ -387,7 +390,8 @@ $('placeOrderBtn').onclick = async () => {
     $('confirmNumber').textContent = `#${data.order_number}`;
     $('confirmDetail').textContent = state.diningIn
       ? `${peso(data.total)} — we'll serve it at your table.`
-      : `${peso(data.total)} — on its way to ${room}.`;
+      : `${peso(data.total)} — for ${room}.`;
+    startTracking({ order_id: data.order_id, order_number: data.order_number, status: 'new', ts: Date.now() });
     openSheet('confirmStep');
 
     state.cart.clear();
@@ -407,6 +411,112 @@ $('placeOrderBtn').onclick = async () => {
     btn.textContent = 'Place order';
   }
 };
+
+// ── Order status tracker ────────────────────────────────────────────
+// Guests can't read the orders table; get_order_status is a status-only
+// peephole keyed by the order's unguessable id. Auto-polls while the
+// page is open, with a manual refresh as backup.
+
+const TRACK_KEY = 'tanawin-track-order';
+const TRACK_TTL = 3 * 60 * 60 * 1000; // stop tracking 3h-old orders
+let trackTimer = null;
+
+const STEP_ORDER = ['new', 'preparing', 'delivered'];
+const STATUS_HEADLINE = {
+  new: 'Order received!',
+  preparing: 'Being prepped 👨‍🍳',
+  delivered: 'Ready! On its way in a few minutes 🛎',
+  cancelled: 'Order cancelled',
+};
+const BANNER_TEXT = {
+  new: n => `Order #${n} — received, in the queue · tap to view`,
+  preparing: n => `Order #${n} — being prepped 👨‍🍳 · tap to view`,
+  delivered: n => `Order #${n} — ready! On its way 🛎`,
+};
+
+function trackedOrder() {
+  try {
+    const t = JSON.parse(localStorage.getItem(TRACK_KEY) || 'null');
+    if (!t || Date.now() - t.ts > TRACK_TTL) return null;
+    return t;
+  } catch { return null; }
+}
+
+function startTracking(order) {
+  localStorage.setItem(TRACK_KEY, JSON.stringify(order));
+  renderTracker(order.status);
+  scheduleTrackerPoll();
+}
+
+function stopTracking() {
+  localStorage.removeItem(TRACK_KEY);
+  clearTimeout(trackTimer);
+  $('orderBanner').classList.add('hidden');
+}
+
+function renderTracker(status) {
+  const t = trackedOrder();
+  if (!t) return;
+  // confirm sheet steps
+  const stepIdx = STEP_ORDER.indexOf(status);
+  document.querySelectorAll('#trackerSteps li').forEach(li => {
+    const idx = STEP_ORDER.indexOf(li.dataset.step);
+    li.classList.toggle('done', stepIdx > idx || status === 'delivered' && idx === stepIdx);
+    li.classList.toggle('current', idx === stepIdx && status !== 'delivered');
+  });
+  $('trackerHeading').textContent = STATUS_HEADLINE[status] || status;
+  $('confirmStep').classList.toggle('is-ready', status === 'delivered');
+  // banner (only when the sheet is closed and the order is still in flight)
+  const banner = $('orderBanner');
+  if (status === 'cancelled') {
+    banner.classList.add('hidden');
+  } else {
+    banner.textContent = BANNER_TEXT[status](t.order_number);
+    banner.classList.toggle('ready', status === 'delivered');
+    banner.classList.toggle('hidden', !$('cartSheet').classList.contains('hidden'));
+  }
+}
+
+async function refreshTrackedStatus() {
+  const t = trackedOrder();
+  if (!t) return;
+  const { data, error } = await db.rpc('get_order_status', { p_order_id: t.order_id });
+  if (error || !data) return; // transient — next poll retries
+  if (data.status !== t.status) {
+    t.status = data.status;
+    localStorage.setItem(TRACK_KEY, JSON.stringify(t));
+    if (data.status === 'delivered' && navigator.vibrate) navigator.vibrate([120, 60, 120]);
+  }
+  renderTracker(t.status);
+  if (t.status === 'delivered' || t.status === 'cancelled') {
+    // final state: keep it on screen ~10 min, then clear quietly
+    if (Date.now() - t.ts > 10 * 60 * 1000) stopTracking();
+    else scheduleTrackerPoll(60000);
+  } else {
+    scheduleTrackerPoll();
+  }
+}
+
+function scheduleTrackerPoll(ms = 12000) {
+  clearTimeout(trackTimer);
+  if (trackedOrder()) trackTimer = setTimeout(refreshTrackedStatus, ms);
+}
+
+$('trackerRefreshBtn').onclick = () => refreshTrackedStatus();
+$('orderBanner').onclick = () => { openSheet('confirmStep'); renderTracker(trackedOrder()?.status || 'new'); };
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshTrackedStatus(); // catch up after the phone napped
+});
+
+// resume tracking after a reload
+(function resumeTracking() {
+  const t = trackedOrder();
+  if (!t) return;
+  $('confirmNumber').textContent = `#${t.order_number}`;
+  $('confirmDetail').textContent = '';
+  renderTracker(t.status);
+  refreshTrackedStatus();
+})();
 
 // ── Helpers ─────────────────────────────────────────────────────────
 

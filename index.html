@@ -31,6 +31,9 @@
     <a href="staff.html">Staff login</a>
   </footer>
 
+  <!-- Active-order banner (shows while browsing with an order in flight) -->
+  <button class="order-banner hidden" id="orderBanner"></button>
+
   <!-- Sticky cart bar -->
   <button class="cart-bar hidden" id="cartBar" aria-label="View cart">
     <span id="cartBarCount"></span>
@@ -96,12 +99,22 @@
       <button class="btn-ghost" id="backToCartBtn">Back</button>
     </div>
 
-    <!-- Step 3: confirmation -->
+    <!-- Step 3: confirmation + live status tracker -->
     <div id="confirmStep" class="hidden">
       <span class="confirm-flower" data-flower></span>
-      <h2>Order received!</h2>
+      <h2 id="trackerHeading">Order received!</h2>
       <p class="confirm-number">Order <strong id="confirmNumber"></strong></p>
       <p id="confirmDetail"></p>
+
+      <ol class="tracker" id="trackerSteps">
+        <li data-step="new"><span class="dot"></span>Order received</li>
+        <li data-step="preparing"><span class="dot"></span>Being prepped</li>
+        <li data-step="delivered"><span class="dot"></span>Ready — on its way!</li>
+      </ol>
+
+      <p class="tracker-hint">Keep this page open — it updates by itself.
+        Not moving? Tap refresh.</p>
+      <button class="btn-ghost tracker-refresh" id="trackerRefreshBtn">⟳ Refresh status</button>
       <button class="btn-primary" id="doneBtn">Back to menu</button>
     </div>
   </section>
