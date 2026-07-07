@@ -12,6 +12,7 @@ const state = {
   items: new Map(),          // id -> menu item row
   cart: new Map(),           // "id|option" -> { id, option, qty }
   diningIn: false,
+  roomName: null,
   proofFile: null,
 };
 
@@ -262,14 +263,29 @@ $('doneBtn').onclick = () => closeSheet();
 // ── Checkout details ────────────────────────────────────────────────
 
 // Location: an explicit either/or — picking "To my room" reveals the
-// room-name field; "Dining in" needs nothing more (one universal QR,
+// room chips; "Dining in" needs nothing more (one universal QR,
 // no per-table codes — staff serve the dining area directly).
+ROOMS.forEach(name => {
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'room-chip';
+  chip.textContent = name;
+  chip.onclick = () => {
+    state.roomName = name;
+    document.querySelectorAll('.room-chip').forEach(c =>
+      c.classList.toggle('selected', c === chip));
+  };
+  $('roomPicker').appendChild(chip);
+});
+
 $('locOptions').addEventListener('change', () => {
   const choice = document.querySelector('input[name="loc"]:checked')?.value;
   state.diningIn = choice === 'dining';
-  $('roomInput').classList.toggle('hidden', choice !== 'room');
-  if (choice === 'room') $('roomInput').focus();
-  else $('roomInput').value = '';
+  $('roomPicker').classList.toggle('hidden', choice !== 'room');
+  if (choice !== 'room') {
+    state.roomName = null;
+    document.querySelectorAll('.room-chip').forEach(c => c.classList.remove('selected'));
+  }
   $('noteInput').placeholder = state.diningIn
     ? 'e.g. we’re at the table by the garden'
     : 'e.g. less spicy, extra rice';
@@ -299,13 +315,13 @@ $('proofInput').onchange = () => {
 
 $('placeOrderBtn').onclick = async () => {
   const choice = document.querySelector('input[name="loc"]:checked')?.value;
-  const room = $('roomInput').value.trim();
+  const room = state.roomName;
   if (!choice) {
     toast('Please choose: to your room, or dining in?');
     return;
   }
   if (choice === 'room' && !room) {
-    toast('Please tell us which room you\'re in.');
+    toast('Please tap your room\'s name.');
     return;
   }
   const { count } = cartTotals();

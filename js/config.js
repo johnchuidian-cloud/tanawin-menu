@@ -12,6 +12,23 @@ const GCASH_QR_URL = `${SUPABASE_URL}/storage/v1/object/public/menu-images/gcash
 // Fixed display order for the 7 categories.
 const CATEGORIES = ['Chicken', 'Seafood', 'Vegetables', 'Silogs', 'Crepes', 'Pika-Pika', 'Beverages'];
 
+// Room list (from Lexi, 2026-07-07) — guests tap to pick at checkout.
+const ROOMS = [
+  'Tanawin House',
+  'Glamping Tent 1',
+  'Glamping Tent 2',
+  'Glamping Tent 3',
+  'Glamping Tent 4',
+  'Ambon Ambon Falls',
+  'Bisay Falls',
+  'Kairukan Falls',
+  'Dunsulan Falls',
+  'Limutan Falls',
+  'Pasukulan Falls',
+  'Silanganan Falls',
+  'Tikip Falls',
+];
+
 // Staff roster — mirrors kitchen_users in the Kitchen app (same people, same
 // PINs). Each maps to a hidden auth account <slug>@tanawin.menu; staff changes
 // need both this list and the auth account updated (ask Claude in a build chat).
