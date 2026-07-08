@@ -1,0 +1,13 @@
+// Cloudflare Workers (static assets) config for the git-connected build.
+// Menu is a plain multi-page static site (index.html + staff.html +
+// poster.html, no build step), so this is an assets-only worker serving
+// the repo root. Making the config explicit avoids relying on dashboard
+// auto-detection. NOTE: not a single-page app — leave not_found_handling
+// at the default so /staff and /poster resolve to their own files.
+{
+  "name": "tanawin-menu",
+  "compatibility_date": "2026-07-07",
+  "assets": {
+    "directory": "./"
+  }
+}
