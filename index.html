@@ -81,6 +81,15 @@
         </div>
       </fieldset>
 
+      <div class="sig-panel" id="sigPanel">
+        <span class="field-label">Sign to confirm the room charge</span>
+        <canvas id="sigCanvas" aria-label="Signature area — draw with your finger"></canvas>
+        <div class="sig-row">
+          <span class="sig-hint">Draw with your finger ☝</span>
+          <button type="button" class="link-btn sig-clear" id="sigClearBtn">Clear</button>
+        </div>
+      </div>
+
       <div class="gcash-panel hidden" id="gcashPanel">
         <img id="gcashQr" alt="GCash QR code" src="">
         <p>Pay with GCash or bank transfer (InstaPay), then attach a screenshot of the payment (optional).</p>

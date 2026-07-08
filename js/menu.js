@@ -276,6 +276,7 @@ function openSheet(step) {
   ['cartStep', 'checkoutStep', 'confirmStep'].forEach(s =>
     $(s).classList.toggle('hidden', s !== step));
   if (step === 'cartStep') renderCartLines();
+  if (step === 'checkoutStep' && payIntent() === 'room') sigInit(); // canvas has layout now
 }
 
 function closeSheet() {
@@ -331,9 +332,61 @@ let gcashQrAvailable = true;
 $('gcashQr').onerror = () => { gcashQrAvailable = false; $('gcashQr').style.display = 'none'; };
 
 $('payOptions').addEventListener('change', () => {
-  const isGcash = payIntent() === 'gcash';
-  $('gcashPanel').classList.toggle('hidden', !isGcash);
+  const intent = payIntent();
+  $('gcashPanel').classList.toggle('hidden', intent !== 'gcash');
+  $('sigPanel').classList.toggle('hidden', intent !== 'room');
+  if (intent === 'room') sigInit();
 });
+
+// ── Signature pad (charge-to-room authorization) ────────────────────
+
+const sigCanvas = $('sigCanvas');
+let sigCtx = null, sigHasInk = false;
+
+function sigInit() {
+  const rect = sigCanvas.getBoundingClientRect();
+  if (!rect.width || sigCtx) return; // size unknown or already initialized
+  const dpr = window.devicePixelRatio || 1;
+  sigCanvas.width = rect.width * dpr;
+  sigCanvas.height = rect.height * dpr;
+  sigCtx = sigCanvas.getContext('2d');
+  sigCtx.scale(dpr, dpr);
+  sigCtx.lineWidth = 2.2;
+  sigCtx.lineCap = 'round';
+  sigCtx.lineJoin = 'round';
+  sigCtx.strokeStyle = '#3D2317';
+}
+
+function sigPoint(e) {
+  const rect = sigCanvas.getBoundingClientRect();
+  return [e.clientX - rect.left, e.clientY - rect.top];
+}
+
+sigCanvas.addEventListener('pointerdown', e => {
+  sigInit();
+  if (!sigCtx) return;
+  sigCanvas.setPointerCapture(e.pointerId);
+  sigCtx.beginPath();
+  sigCtx.moveTo(...sigPoint(e));
+  e.preventDefault();
+});
+sigCanvas.addEventListener('pointermove', e => {
+  if (!sigCtx || e.buttons !== 1) return;
+  sigCtx.lineTo(...sigPoint(e));
+  sigCtx.stroke();
+  sigHasInk = true;
+  e.preventDefault();
+});
+
+function sigClear() {
+  if (sigCtx) sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+  sigHasInk = false;
+}
+$('sigClearBtn').onclick = sigClear;
+
+function sigBlob() {
+  return new Promise(resolve => sigCanvas.toBlob(resolve, 'image/png'));
+}
 
 function payIntent() {
   return document.querySelector('input[name="pay"]:checked').value;
@@ -360,6 +413,10 @@ $('placeOrderBtn').onclick = async () => {
   }
   const { count } = cartTotals();
   if (!count) { toast('Your cart is empty.'); return; }
+  if (payIntent() === 'room' && !sigHasInk) {
+    toast('Please sign in the box to confirm charging to your room.');
+    return;
+  }
 
   const btn = $('placeOrderBtn');
   btn.disabled = true;
@@ -375,6 +432,14 @@ $('placeOrderBtn').onclick = async () => {
       proofUrl = path;
     }
 
+    let signaturePath = null;
+    if (payIntent() === 'room' && sigHasInk) {
+      const blob = await sigBlob();
+      signaturePath = `${crypto.randomUUID()}.png`;
+      const { error: sigErr } = await db.storage.from('signatures').upload(signaturePath, blob, { contentType: 'image/png' });
+      if (sigErr) throw sigErr;
+    }
+
     const items = [...state.cart.values()]
       .map(e => ({ menu_item_id: e.id, qty: e.qty, option: e.option }));
     const { data, error } = await db.rpc('place_order', {
@@ -384,6 +449,7 @@ $('placeOrderBtn').onclick = async () => {
       p_note: $('noteInput').value.trim() || null,
       p_gcash_proof_url: proofUrl,
       p_items: items,
+      p_signature_url: signaturePath,
     });
     if (error) throw error;
 
@@ -396,6 +462,7 @@ $('placeOrderBtn').onclick = async () => {
 
     state.cart.clear();
     state.proofFile = null;
+    sigClear();
     $('proofInput').value = '';
     $('proofLabelText').textContent = 'Attach payment screenshot';
     $('noteInput').value = '';

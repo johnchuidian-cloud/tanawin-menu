@@ -228,6 +228,16 @@ function orderCard(o) {
     });
   }
 
+  if (o.signature_url) {
+    db.storage.from('signatures').createSignedUrl(o.signature_url, 3600).then(({ data }) => {
+      if (data?.signedUrl) {
+        card.querySelector('.proof-slot').insertAdjacentHTML('beforeend',
+          `<div class="sig-label">✍ Signed — charge to room</div>
+           <img class="sig-thumb" src="${data.signedUrl}" alt="Guest signature">`);
+      }
+    });
+  }
+
   const actions = card.querySelector('.order-actions');
   if (o.status === 'new') {
     actions.appendChild(actionBtn('Start prepping', () => setStatus(o.id, 'preparing')));

@@ -345,6 +345,32 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
 .pay-options strong { font-size: 14.5px; display: block; }
 .pay-options small { color: var(--ink-soft); font-size: 12px; }
 
+.sig-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+#sigCanvas {
+  width: 100%;
+  height: 140px;
+  border: 1.5px dashed var(--terracotta-light);
+  border-radius: 10px;
+  background: var(--cream);
+  touch-action: none;
+  display: block;
+  margin-top: 8px;
+}
+.sig-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+.sig-hint { font-size: 12.5px; color: var(--ink-soft); }
+.sig-clear { color: var(--terracotta); font-size: 13.5px; }
+
 .gcash-panel {
   text-align: center;
   background: #fff;
