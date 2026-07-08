@@ -324,7 +324,7 @@ function menuRow(m, catItems, idx) {
     <div class="menu-row-actions">
       <button class="icon-btn" title="Move up" ${idx === 0 ? 'disabled' : ''}>↑</button>
       <button class="icon-btn" title="Move down" ${idx === catItems.length - 1 ? 'disabled' : ''}>↓</button>
-      <button class="icon-btn" title="Edit">✎</button>
+      <button class="icon-btn edit-btn" title="Edit item">✎<span>Edit</span></button>
       <input type="checkbox" class="avail-toggle" title="Available" ${m.is_available ? 'checked' : ''}>
     </div>`;
 
