@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tanawin Menu — QR Poster</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="assets/icon-192.png">
+  <style>
+    :root {
+      --terracotta: #9A3518;
+      --ink: #3D2317;
+      --ink-soft: #6E4B38;
+      --line: #E6D8C9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: #f2ece3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .poster {
+      background: #fff;
+      border: 2.5px solid var(--terracotta);
+      border-radius: 22px;
+      text-align: center;
+      padding: 38px 34px 30px;
+      width: 420px;
+      max-width: 100%;
+    }
+    .flower { width: 34px; height: 34px; color: var(--terracotta); }
+    .brand {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--terracotta);
+      margin: 4px 0 2px;
+    }
+    .brand-sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 20px; }
+    .above {
+      font-size: 21px;
+      font-weight: 800;
+      color: var(--ink);
+      margin-bottom: 18px;
+      line-height: 1.3;
+    }
+    .qr { width: 240px; height: 240px; display: block; margin: 0 auto 18px; }
+    .below {
+      font-size: 14.5px;
+      color: var(--ink-soft);
+      line-height: 1.45;
+      max-width: 320px;
+      margin: 0 auto;
+    }
+    .print-btn {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      border: none;
+      border-radius: 12px;
+      background: var(--terracotta);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 13px 20px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .hint {
+      position: fixed;
+      bottom: 14px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 12.5px;
+      color: var(--ink-soft);
+    }
+    @media print {
+      body { background: #fff; min-height: auto; padding: 0; }
+      .poster { border-width: 2px; margin: 40px auto; }
+      .print-btn, .hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <button class="print-btn" onclick="window.print()">🖨 Print</button>
+
+  <div class="poster">
+    <svg class="flower" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><g transform="translate(16 16)"><ellipse rx="1.7" ry="7.2" cy="-8.2" transform="rotate(0)"/><ellipse rx="1.5" ry="5.6" cy="-6.6" transform="rotate(47)"/><ellipse rx="1.6" ry="6.8" cy="-7.6" transform="rotate(88)"/><ellipse rx="1.4" ry="5.2" cy="-6.2" transform="rotate(128)"/><ellipse rx="1.6" ry="6.4" cy="-7.2" transform="rotate(171)"/><ellipse rx="1.5" ry="5.8" cy="-6.8" transform="rotate(217)"/><ellipse rx="1.7" ry="7.0" cy="-7.9" transform="rotate(262)"/><ellipse rx="1.4" ry="5.4" cy="-6.4" transform="rotate(309)"/><circle r="2.1"/></g></svg>
+    <div class="brand">Tanawin</div>
+    <div class="brand-sub">Bed &amp; Breakfast · Bataan</div>
+    <div class="above" id="textAbove">Hungry? Order from your room!</div>
+    <img class="qr" src="assets/menu-qr.png" alt="QR code — scan to open the Tanawin menu">
+    <div class="below" id="textBelow">Scan with your phone camera to browse our menu and order — we'll bring it right to you.</div>
+  </div>
+
+  <p class="hint">Edit these captions in the staff dashboard → Settings → QR poster, then reprint.</p>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    // Captions come from settings (staff-only table). Opened from the staff
+    // dashboard the auth session carries over; without one, defaults stand.
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    (async () => {
+      const { data: { session } } = await db.auth.getSession();
+      if (!session) return;
+      const { data } = await db.from('settings').select('key, value')
+        .in('key', ['qr_text_above', 'qr_text_below']);
+      (data || []).forEach(r => {
+        if (r.key === 'qr_text_above' && r.value) document.getElementById('textAbove').textContent = r.value;
+        if (r.key === 'qr_text_below' && r.value) document.getElementById('textBelow').textContent = r.value;
+      });
+    })();
+  </script>
+</body>
+</html>

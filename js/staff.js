@@ -496,8 +496,20 @@ async function loadSettings() {
   const map = Object.fromEntries(data.map(r => [r.key, r.value]));
   $('smsNumbers').value = map.staff_sms_numbers || '';
   $('smsEnabled').checked = map.sms_enabled === 'true';
+  $('qrTextAbove').value = map.qr_text_above || '';
+  $('qrTextBelow').value = map.qr_text_below || '';
   $('settingsQr').src = `${GCASH_QR_URL}?t=${Date.now()}`;
 }
+
+$('saveQrTextBtn').onclick = async () => {
+  const updates = [
+    { key: 'qr_text_above', value: $('qrTextAbove').value.trim() },
+    { key: 'qr_text_below', value: $('qrTextBelow').value.trim() },
+  ].map(r => ({ ...r, updated_at: new Date().toISOString() }));
+  const { error } = await db.from('settings').upsert(updates);
+  if (error) { toast('Save failed.'); console.error(error); return; }
+  toast('Poster text saved — reopen the poster to see it.');
+};
 
 $('settingsForm').onsubmit = async e => {
   e.preventDefault();

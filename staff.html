@@ -83,6 +83,16 @@
       </form>
 
       <div class="settings-card">
+        <span class="field-label">Guest-room QR poster</span>
+        <label class="field"><span class="field-label">Text above the QR</span>
+          <input type="text" id="qrTextAbove" maxlength="80" placeholder="Hungry? Order from your room!"></label>
+        <label class="field"><span class="field-label">Text below the QR</span>
+          <textarea id="qrTextBelow" rows="2" maxlength="180"></textarea></label>
+        <button class="btn-primary" type="button" id="saveQrTextBtn">Save poster text</button>
+        <a class="poster-link" href="poster.html" target="_blank">🖨 Open printable poster</a>
+      </div>
+
+      <div class="settings-card">
         <span class="field-label">Payment QR (shown at checkout)</span>
         <img id="settingsQr" class="settings-qr" alt="Current payment QR">
         <label class="proof-label">
