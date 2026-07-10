@@ -42,7 +42,7 @@ async function showApp(user) {
   $('settingsTab').classList.toggle('hidden', meta.role !== 'admin');
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
-  await Promise.all([loadOrders(), loadMenu(), loadSettings()]);
+  await Promise.all([loadOrders(), loadMenu(), loadRooms(), loadSettings()]);
   subscribeOrders();
 }
 
@@ -112,7 +112,7 @@ $('logoutBtn').onclick = async () => {
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-    ['orders', 'menu', 'settings'].forEach(t =>
+    ['orders', 'menu', 'rooms', 'settings'].forEach(t =>
       $(`tab-${t}`).classList.toggle('hidden', t !== btn.dataset.tab));
   };
 });
@@ -496,6 +496,54 @@ function removeStoredPhoto(url) {
   const path = url.slice(i + marker.length);
   if (path === 'gcash-qr.jpg') return; // never touch the payment QR
   db.storage.from('menu-images').remove([path]).catch(console.error);
+}
+
+// ── Rooms: access codes ─────────────────────────────────────────────
+
+async function loadRooms() {
+  const { data, error } = await db.from('rooms')
+    .select('name, code, kind, is_active').order('created_at');
+  if (error) { console.error(error); return; }
+  const wrap = $('roomsList');
+  wrap.innerHTML = '';
+  data.forEach(room => wrap.appendChild(roomRow(room)));
+}
+
+function roomRow(room) {
+  const row = document.createElement('div');
+  row.className = `room-row${room.is_active ? '' : ' unavailable'}`;
+  row.innerHTML = `
+    <div class="menu-row-info">
+      <strong>${esc(room.name)}${room.kind === 'dining' ? ' 🍽' : ''}</strong>
+      <small>${room.is_active ? 'active' : 'DISABLED — code won’t work'}</small>
+    </div>
+    <span class="room-code">${esc(room.code)}</span>
+    <div class="menu-row-actions">
+      <button class="icon-btn rotate-btn" title="Replace this code">New<br>code</button>
+      <input type="checkbox" class="avail-toggle" title="Active" ${room.is_active ? 'checked' : ''}>
+    </div>`;
+
+  row.querySelector('.rotate-btn').onclick = async () => {
+    if (!confirm(`Replace the code for ${room.name}? The old code stops working immediately.`)) return;
+    // retry a couple of times on the (unlikely) chance of a duplicate code
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const fresh = String(Math.floor(100000 + Math.random() * 900000));
+      const { error } = await db.from('rooms').update({ code: fresh }).eq('name', room.name);
+      if (!error) { toast(`${room.name}: new code ${fresh}`); return loadRooms(); }
+      if (!String(error.message).includes('duplicate')) {
+        toast('Could not replace the code.'); console.error(error); return;
+      }
+    }
+    toast('Could not replace the code — try again.');
+  };
+
+  row.querySelector('.avail-toggle').onchange = async e => {
+    const { error } = await db.from('rooms')
+      .update({ is_active: e.target.checked }).eq('name', room.name);
+    if (error) { toast('Update failed.'); e.target.checked = !e.target.checked; return; }
+    loadRooms();
+  };
+  return row;
 }
 
 // ── Settings ────────────────────────────────────────────────────────

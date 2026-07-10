@@ -20,8 +20,8 @@ Part of the Tanawin family: **Finance** (expenses), **Kitchen** (kitchen ops), *
 
 ## How orders flow
 
-1. Guest adds items to cart, checks out with room number (or "Dining in"), payment intent (`room` | `gcash` | `cash`), optional note + GCash proof screenshot.
-2. `place_order` (security-definer RPC) validates items, computes the total from **live menu prices** (client totals are never trusted), inserts `orders` + `order_items`, and returns the order number.
+1. Guest adds items to cart, checks out with their **room access code** (given at check-in; walk-in diners get the Dining Area code from staff), a room-service/dining-in choice, payment intent (`room` | `gcash` | `cash`), optional note + GCash proof screenshot, and a touch signature for room charges.
+2. `place_order` (security-definer RPC) validates the access code server-side (the code *resolves* the room — clients never name their own room), rate-caps orders per room, validates items, computes the total from **live menu prices** (client totals are never trusted), inserts `orders` + `order_items`, and returns the order number. Codes live in the `rooms` table (no anon read access) and are managed in the staff dashboard's Rooms tab.
 3. Staff dashboard receives the order over a realtime subscription — sound + toast — and advances status: `new → preparing → delivered` (or `cancelled`).
 4. In parallel, a pg_net trigger POSTs to the `order-sms` Edge Function (shared-secret header), which sends the SMS when enabled.
 

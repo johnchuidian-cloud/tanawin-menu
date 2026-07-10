@@ -292,6 +292,43 @@
 }
 .btn-ghost.danger { color: #A03A2A; font-weight: 700; }
 
+/* ── Rooms ──────────────────────────────────────────── */
+
+.rooms-note {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+.room-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.room-row.unavailable { opacity: 0.55; }
+.room-code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--terracotta);
+}
+.rotate-btn {
+  width: auto;
+  height: auto;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
 /* ── Settings ───────────────────────────────────────── */
 
 .settings-card {

@@ -50,6 +50,7 @@
     <nav class="staff-tabs">
       <button class="tab-btn active" data-tab="orders">Orders <span class="tab-badge hidden" id="activeBadge"></span></button>
       <button class="tab-btn" data-tab="menu">Menu</button>
+      <button class="tab-btn" data-tab="rooms">Rooms</button>
       <button class="tab-btn hidden" data-tab="settings" id="settingsTab">Settings</button>
     </nav>
 
@@ -66,6 +67,14 @@
     <main id="tab-menu" class="tab-panel hidden">
       <button class="btn-primary" id="addItemBtn">+ Add menu item</button>
       <div id="menuList"></div>
+    </main>
+
+    <!-- Rooms: access codes given at check-in -->
+    <main id="tab-rooms" class="tab-panel hidden">
+      <p class="rooms-note">Give guests their room's code at check-in — every order needs one.
+        Walk-in diners get the <strong>Dining Area</strong> code. If a code leaks
+        (spam orders), tap <strong>New code</strong> to replace it instantly.</p>
+      <div id="roomsList"></div>
     </main>
 
     <!-- Settings -->

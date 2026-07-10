@@ -13,22 +13,9 @@ const GCASH_QR_URL = `${SUPABASE_URL}/storage/v1/object/public/menu-images/gcash
 // The live list (staff-expandable) comes from the `categories` table.
 const CATEGORIES = ['Chicken', 'Seafood', 'Vegetables', 'Soup & Pancit', 'Crepes', 'Pika-Pika', 'Silogs', 'Beverages', 'Extras'];
 
-// Room list (from Lexi, 2026-07-07) — guests tap to pick at checkout.
-const ROOMS = [
-  'Tanawin House',
-  'Glamping Tent 1',
-  'Glamping Tent 2',
-  'Glamping Tent 3',
-  'Glamping Tent 4',
-  'Ambon Ambon Falls',
-  'Bisay Falls',
-  'Kairukan Falls',
-  'Dunsulan Falls',
-  'Limutan Falls',
-  'Pasukulan Falls',
-  'Silanganan Falls',
-  'Tikip Falls',
-];
+// Rooms live in the `rooms` table (codes + names, staff-managed in the
+// dashboard's Rooms tab). Guests never see the list — their access code
+// identifies the room server-side.
 
 // Staff roster — mirrors kitchen_users in the Kitchen app (same people, same
 // PINs). Each maps to a hidden auth account <slug>@tanawin.menu; staff changes

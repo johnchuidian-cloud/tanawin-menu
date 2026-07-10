@@ -307,26 +307,23 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
   margin-bottom: 8px;
   display: block;
 }
-.room-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-.room-chip {
+.code-input {
+  width: 100%;
   border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
   background: #fff;
-  color: var(--ink-soft);
-  border-radius: 999px;
-  padding: 9px 13px;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.35em;
 }
-.room-chip.selected {
-  background: var(--terracotta);
-  border-color: var(--terracotta);
-  color: var(--cream);
+.code-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 6px;
 }
 
 .pay-options { display: flex; flex-direction: column; gap: 8px; }

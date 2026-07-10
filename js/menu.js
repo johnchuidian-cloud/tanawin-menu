@@ -297,33 +297,21 @@ $('doneBtn').onclick = () => closeSheet();
 
 // ── Checkout details ────────────────────────────────────────────────
 
-// Location: an explicit either/or — picking "To my room" reveals the
-// room chips; "Dining in" needs nothing more (one universal QR,
-// no per-table codes — staff serve the dining area directly).
-ROOMS.forEach(name => {
-  const chip = document.createElement('button');
-  chip.type = 'button';
-  chip.className = 'room-chip';
-  chip.textContent = name;
-  chip.onclick = () => {
-    state.roomName = name;
-    document.querySelectorAll('.room-chip').forEach(c =>
-      c.classList.toggle('selected', c === chip));
-  };
-  $('roomPicker').appendChild(chip);
-});
-
+// Location: an explicit either/or. The access code below identifies the
+// room server-side — guests never pick (or mistype) a room name. Walk-in
+// diners get the Dining Area code from staff.
 $('locOptions').addEventListener('change', () => {
   const choice = document.querySelector('input[name="loc"]:checked')?.value;
   state.diningIn = choice === 'dining';
-  $('roomPicker').classList.toggle('hidden', choice !== 'room');
-  if (choice !== 'room') {
-    state.roomName = null;
-    document.querySelectorAll('.room-chip').forEach(c => c.classList.remove('selected'));
-  }
   $('noteInput').placeholder = state.diningIn
     ? 'e.g. we’re at the table by the garden'
     : 'e.g. less spicy, extra rice';
+});
+
+// Returning guests keep their code for the whole stay.
+$('accessCode').value = localStorage.getItem('tanawin-room-code') || '';
+$('accessCode').addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
 });
 
 // GCash panel: show on selection; hide the whole panel if no QR uploaded yet.
@@ -402,13 +390,13 @@ $('proofInput').onchange = () => {
 
 $('placeOrderBtn').onclick = async () => {
   const choice = document.querySelector('input[name="loc"]:checked')?.value;
-  const room = state.roomName;
+  const code = $('accessCode').value.trim();
   if (!choice) {
     toast('Please choose: to your room, or dining in?');
     return;
   }
-  if (choice === 'room' && !room) {
-    toast('Please tap your room\'s name.');
+  if (!/^\d{6}$/.test(code)) {
+    toast('Please enter your 6-digit access code — it\'s on the card in your room, or ask our staff.');
     return;
   }
   const { count } = cartTotals();
@@ -443,7 +431,7 @@ $('placeOrderBtn').onclick = async () => {
     const items = [...state.cart.values()]
       .map(e => ({ menu_item_id: e.id, qty: e.qty, option: e.option }));
     const { data, error } = await db.rpc('place_order', {
-      p_room_number: state.diningIn ? null : room,
+      p_access_code: code,
       p_is_dining_in: state.diningIn,
       p_payment_intent: payIntent(),
       p_note: $('noteInput').value.trim() || null,
@@ -453,10 +441,11 @@ $('placeOrderBtn').onclick = async () => {
     });
     if (error) throw error;
 
+    localStorage.setItem('tanawin-room-code', code); // keep for the stay
     $('confirmNumber').textContent = `#${data.order_number}`;
     $('confirmDetail').textContent = state.diningIn
       ? `${peso(data.total)} — we'll serve it at your table.`
-      : `${peso(data.total)} — for ${room}.`;
+      : `${peso(data.total)} — for ${data.room_number}.`;
     startTracking({ order_id: data.order_id, order_number: data.order_number, status: 'new', ts: Date.now() });
     openSheet('confirmStep');
 
@@ -472,7 +461,16 @@ $('placeOrderBtn').onclick = async () => {
     $('cartBar').classList.add('hidden');
   } catch (err) {
     console.error(err);
-    toast('Something went wrong placing your order. Please try again, or ask our staff for help.');
+    const msg = String(err?.message || '');
+    if (msg.includes('access code')) {
+      toast('That access code doesn\'t look right — please check the card in your room, or ask our staff.');
+    } else if (msg.includes('dining in only')) {
+      toast('That code works for dining in only — for room service, use your room\'s own code.');
+    } else if (msg.includes('too many orders')) {
+      toast('That\'s a lot of orders this hour! Please ask our staff for help with this one.');
+    } else {
+      toast('Something went wrong placing your order. Please try again, or ask our staff for help.');
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = 'Place order';
