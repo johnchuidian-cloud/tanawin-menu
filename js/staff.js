@@ -40,6 +40,7 @@ async function showApp(user) {
   const meta = user?.user_metadata || {};
   $('currentUserName').textContent = meta.name || '';
   $('settingsTab').classList.toggle('hidden', meta.role !== 'admin');
+  $('hubLink').classList.toggle('hidden', meta.role !== 'admin'); // Hub is Lexi's launcher (fleet convention)
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   await Promise.all([loadOrders(), loadMenu(), loadRooms(), loadSettings()]);
