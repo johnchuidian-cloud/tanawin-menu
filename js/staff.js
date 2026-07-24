@@ -39,8 +39,17 @@ function showLogin() {
 async function showApp(user) {
   const meta = user?.user_metadata || {};
   currentRole = meta.role || 'staff';
+  currentAuthId = user?.id || null;
   $('currentUserName').textContent = meta.name || '';
   const isAdmin = meta.role === 'admin';
+  if (isAdmin) {
+    const { data: me } = await db.from('staff').select('is_prime').eq('auth_uid', user.id).maybeSingle();
+    currentIsPrime = me?.is_prime === true;
+    // only the prime admin (Lexi) may create other admins
+    const adminOpt = document.querySelector('#newStaffRole option[value="admin"]');
+    if (adminOpt) adminOpt.hidden = !currentIsPrime;
+    if (!currentIsPrime) $('newStaffRole').value = 'staff';
+  }
   $('settingsTab').classList.toggle('hidden', !isAdmin);
   $('staffTab').classList.toggle('hidden', !isAdmin);
   $('hubLink').classList.toggle('hidden', !isAdmin); // Hub is Lexi's launcher (fleet convention)
@@ -53,6 +62,8 @@ async function showApp(user) {
 }
 
 let currentRole = 'staff';
+let currentIsPrime = false;
+let currentAuthId = null;
 
 // PIN login mirroring the Kitchen app: pick your name, enter your 4-digit
 // PIN (same people, same PINs). Each person maps to a hidden auth account
@@ -562,7 +573,7 @@ function roomRow(room) {
 
 async function loadStaff() {
   const { data, error } = await db.from('staff')
-    .select('slug, name, role, is_active').order('sort_order');
+    .select('slug, name, role, is_active, is_prime, auth_uid').order('sort_order');
   if (error) { console.error(error); return; }
   const wrap = $('staffList');
   wrap.innerHTML = '';
@@ -570,34 +581,54 @@ async function loadStaff() {
 }
 
 function staffRow(s) {
+  const isSelf = s.auth_uid === currentAuthId;
+  const targetIsAdminish = s.is_prime || s.role === 'admin';
+  const canRemove = !s.is_prime && !isSelf && (s.role !== 'admin' || currentIsPrime);
+  const canToggleRole = currentIsPrime && !s.is_prime && !isSelf;
+  const canSetPin = isSelf || (targetIsAdminish ? currentIsPrime : true);
+
+  const roleLabel = s.is_prime ? 'Owner — full access, protected'
+    : s.role === 'admin' ? 'Admin — full access' : 'Staff';
+
   const row = document.createElement('div');
   row.className = 'staff-row';
   row.innerHTML = `
     <span class="avatar ${s.role}">${esc(s.name[0] || '?')}</span>
     <div class="menu-row-info">
-      <strong>${esc(s.name)}</strong>
-      <small>${s.role === 'admin' ? 'Admin — full access' : 'Staff'}</small>
+      <strong>${esc(s.name)}${s.is_prime ? ' 👑' : ''}</strong>
+      <small>${roleLabel}</small>
     </div>
     <div class="menu-row-actions">
-      <button class="icon-btn pin-btn" title="Change PIN">New<br>PIN</button>
-      <button class="icon-btn remove-btn" title="Remove">✕</button>
+      ${canToggleRole ? `<button class="icon-btn role-btn">${s.role === 'admin' ? 'Revoke<br>admin' : 'Make<br>admin'}</button>` : ''}
+      ${canSetPin ? `<button class="icon-btn pin-btn" title="Change PIN">New<br>PIN</button>` : ''}
+      ${canRemove ? `<button class="icon-btn remove-btn" title="Remove">✕</button>` : ''}
     </div>`;
 
-  row.querySelector('.pin-btn').onclick = async () => {
+  row.querySelector('.pin-btn')?.addEventListener('click', async () => {
     const pin = prompt(`New 4-digit PIN for ${s.name}:`);
     if (pin == null) return;
     if (!/^\d{4}$/.test(pin.trim())) { toast('PIN must be exactly 4 digits.'); return; }
     const { error } = await callManageStaff({ action: 'set_pin', slug: s.slug, pin: pin.trim() });
     toast(error || `${s.name}'s PIN updated.`);
-  };
+  });
 
-  row.querySelector('.remove-btn').onclick = async () => {
+  row.querySelector('.role-btn')?.addEventListener('click', async () => {
+    const makeAdmin = s.role !== 'admin';
+    const verb = makeAdmin ? 'Give admin access to' : 'Revoke admin access from';
+    if (!confirm(`${verb} ${s.name}?`)) return;
+    const { error } = await callManageStaff({ action: 'set_role', slug: s.slug, role: makeAdmin ? 'admin' : 'staff' });
+    if (error) { toast(error); return; }
+    toast(`${s.name} is now ${makeAdmin ? 'an admin' : 'staff'}.`);
+    loadStaff();
+  });
+
+  row.querySelector('.remove-btn')?.addEventListener('click', async () => {
     if (!confirm(`Remove ${s.name}? Their login stops working immediately.`)) return;
     const { error } = await callManageStaff({ action: 'remove', slug: s.slug });
     if (error) { toast(error); return; }
     toast(`${s.name} removed.`);
     loadStaff();
-  };
+  });
   return row;
 }
 
