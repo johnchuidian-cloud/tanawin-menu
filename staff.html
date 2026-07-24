@@ -53,6 +53,7 @@
       <button class="tab-btn active" data-tab="orders">Orders <span class="tab-badge hidden" id="activeBadge"></span></button>
       <button class="tab-btn" data-tab="menu">Menu</button>
       <button class="tab-btn" data-tab="rooms">Rooms</button>
+      <button class="tab-btn hidden" data-tab="staff" id="staffTab">Staff</button>
       <button class="tab-btn hidden" data-tab="settings" id="settingsTab">Settings</button>
     </nav>
 
@@ -77,6 +78,25 @@
         Walk-in diners get the <strong>Dining Area</strong> code. If a code leaks
         (spam orders), tap <strong>New code</strong> to replace it instantly.</p>
       <div id="roomsList"></div>
+    </main>
+
+    <!-- Staff: add / remove people (admin only) -->
+    <main id="tab-staff" class="tab-panel hidden">
+      <div class="settings-card">
+        <span class="field-label">Add a staff member</span>
+        <label class="field"><span class="field-label">Name</span>
+          <input type="text" id="newStaffName" maxlength="40" placeholder="e.g. Rio" autocomplete="off"></label>
+        <label class="field"><span class="field-label">Role</span>
+          <select id="newStaffRole">
+            <option value="staff">Staff — Orders, Menu, Rooms</option>
+            <option value="admin">Admin — full access (Settings, Staff)</option>
+          </select></label>
+        <label class="field"><span class="field-label">4-digit PIN</span>
+          <input type="password" id="newStaffPin" inputmode="numeric" pattern="[0-9]*"
+                 maxlength="4" placeholder="• • • •" autocomplete="off"></label>
+        <button class="btn-primary" type="button" id="addStaffBtn">Add staff member</button>
+      </div>
+      <div id="staffList"></div>
     </main>
 
     <!-- Settings -->

@@ -337,6 +337,31 @@
   text-transform: uppercase;
 }
 
+/* ── Staff management ───────────────────────────────── */
+
+.staff-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.staff-row .remove-btn { color: #A03A2A; border-color: #e0b9b0; font-size: 15px; }
+#tab-staff #newStaffRole {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 15px;
+  background: #fff;
+  color: var(--ink);
+}
+#newStaffPin { text-align: center; letter-spacing: 0.4em; font-weight: 700; }
+
 /* ── Settings ───────────────────────────────────────── */
 
 .settings-card {
