@@ -2,7 +2,7 @@
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const FLOWER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><g transform="translate(16 16)"><ellipse rx="1.7" ry="7.2" cy="-8.2" transform="rotate(0)"/><ellipse rx="1.5" ry="5.6" cy="-6.6" transform="rotate(47)"/><ellipse rx="1.6" ry="6.8" cy="-7.6" transform="rotate(88)"/><ellipse rx="1.4" ry="5.2" cy="-6.2" transform="rotate(128)"/><ellipse rx="1.6" ry="6.4" cy="-7.2" transform="rotate(171)"/><ellipse rx="1.5" ry="5.8" cy="-6.8" transform="rotate(217)"/><ellipse rx="1.7" ry="7.0" cy="-7.9" transform="rotate(262)"/><ellipse rx="1.4" ry="5.4" cy="-6.4" transform="rotate(309)"/><circle r="2.1"/></g></svg>`;
+const FLOWER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><g transform="translate(16 16)"><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(45)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(90)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(135)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(180)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(225)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(270)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(315)"/><circle r="2.9"/></g></svg>`;
 document.querySelectorAll('[data-flower]').forEach(el => { el.innerHTML = FLOWER_SVG; });
 
 const $ = id => document.getElementById(id);
@@ -25,7 +25,7 @@ const normalizeOptions = m => !Array.isArray(m?.options) ? [] :
 // ── Auth ────────────────────────────────────────────────────────────
 
 async function boot() {
-  renderUserList();
+  await renderUserList();
   const { data: { session } } = await db.auth.getSession();
   session ? showApp(session.user) : showLogin();
 }
@@ -38,24 +38,35 @@ function showLogin() {
 
 async function showApp(user) {
   const meta = user?.user_metadata || {};
+  currentRole = meta.role || 'staff';
   $('currentUserName').textContent = meta.name || '';
-  $('settingsTab').classList.toggle('hidden', meta.role !== 'admin');
-  $('hubLink').classList.toggle('hidden', meta.role !== 'admin'); // Hub is Lexi's launcher (fleet convention)
+  const isAdmin = meta.role === 'admin';
+  $('settingsTab').classList.toggle('hidden', !isAdmin);
+  $('staffTab').classList.toggle('hidden', !isAdmin);
+  $('hubLink').classList.toggle('hidden', !isAdmin); // Hub is Lexi's launcher (fleet convention)
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
-  await Promise.all([loadOrders(), loadMenu(), loadRooms(), loadSettings()]);
+  const tasks = [loadOrders(), loadMenu(), loadRooms(), loadSettings()];
+  if (isAdmin) tasks.push(loadStaff());
+  await Promise.all(tasks);
   subscribeOrders();
 }
+
+let currentRole = 'staff';
 
 // PIN login mirroring the Kitchen app: pick your name, enter your 4-digit
 // PIN (same people, same PINs). Each person maps to a hidden auth account
 // so RLS still sees `authenticated`.
 let pickedUser = null;
 
-function renderUserList() {
+async function renderUserList() {
+  let roster = STAFF_ROSTER; // fallback if the table can't be read
+  const { data, error } = await db.from('staff')
+    .select('name, slug, role').order('sort_order');
+  if (!error && data?.length) roster = data;
   const wrap = $('userList');
   wrap.innerHTML = '';
-  STAFF_ROSTER.forEach(u => {
+  roster.forEach(u => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'user-btn';
@@ -113,7 +124,7 @@ $('logoutBtn').onclick = async () => {
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-    ['orders', 'menu', 'rooms', 'settings'].forEach(t =>
+    ['orders', 'menu', 'rooms', 'staff', 'settings'].forEach(t =>
       $(`tab-${t}`).classList.toggle('hidden', t !== btn.dataset.tab));
   };
 });
@@ -546,6 +557,78 @@ function roomRow(room) {
   };
   return row;
 }
+
+// ── Staff management (admin only) ───────────────────────────────────
+
+async function loadStaff() {
+  const { data, error } = await db.from('staff')
+    .select('slug, name, role, is_active').order('sort_order');
+  if (error) { console.error(error); return; }
+  const wrap = $('staffList');
+  wrap.innerHTML = '';
+  data.forEach(s => wrap.appendChild(staffRow(s)));
+}
+
+function staffRow(s) {
+  const row = document.createElement('div');
+  row.className = 'staff-row';
+  row.innerHTML = `
+    <span class="avatar ${s.role}">${esc(s.name[0] || '?')}</span>
+    <div class="menu-row-info">
+      <strong>${esc(s.name)}</strong>
+      <small>${s.role === 'admin' ? 'Admin — full access' : 'Staff'}</small>
+    </div>
+    <div class="menu-row-actions">
+      <button class="icon-btn pin-btn" title="Change PIN">New<br>PIN</button>
+      <button class="icon-btn remove-btn" title="Remove">✕</button>
+    </div>`;
+
+  row.querySelector('.pin-btn').onclick = async () => {
+    const pin = prompt(`New 4-digit PIN for ${s.name}:`);
+    if (pin == null) return;
+    if (!/^\d{4}$/.test(pin.trim())) { toast('PIN must be exactly 4 digits.'); return; }
+    const { error } = await callManageStaff({ action: 'set_pin', slug: s.slug, pin: pin.trim() });
+    toast(error || `${s.name}'s PIN updated.`);
+  };
+
+  row.querySelector('.remove-btn').onclick = async () => {
+    if (!confirm(`Remove ${s.name}? Their login stops working immediately.`)) return;
+    const { error } = await callManageStaff({ action: 'remove', slug: s.slug });
+    if (error) { toast(error); return; }
+    toast(`${s.name} removed.`);
+    loadStaff();
+  };
+  return row;
+}
+
+// Calls the admin-gated Edge Function; returns { error } (string) on failure.
+async function callManageStaff(body) {
+  const { data, error } = await db.functions.invoke('manage-staff', { body });
+  if (error) {
+    // the function returns a JSON { error } with a friendly message
+    let msg = 'Something went wrong.';
+    try { msg = (await error.context.json()).error || msg; } catch { /* keep default */ }
+    return { error: msg };
+  }
+  if (data?.error) return { error: data.error };
+  return { data };
+}
+
+$('addStaffBtn').onclick = async () => {
+  const name = $('newStaffName').value.trim();
+  const role = $('newStaffRole').value;
+  const pin = $('newStaffPin').value.trim();
+  if (!name) { toast('Enter a name.'); return; }
+  if (!/^\d{4}$/.test(pin)) { toast('PIN must be exactly 4 digits.'); return; }
+  const btn = $('addStaffBtn');
+  btn.disabled = true;
+  const { data, error } = await callManageStaff({ action: 'add', name, role, pin });
+  btn.disabled = false;
+  if (error) { toast(error); return; }
+  $('newStaffName').value = ''; $('newStaffPin').value = ''; $('newStaffRole').value = 'staff';
+  toast(`${data.name} added — they can log in with their PIN.`);
+  loadStaff();
+};
 
 // ── Settings ────────────────────────────────────────────────────────
 
