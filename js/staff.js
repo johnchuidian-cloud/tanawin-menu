@@ -53,7 +53,12 @@ async function showApp(user) {
   }
   $('settingsTab').classList.toggle('hidden', !isAdmin);
   $('staffTab').classList.toggle('hidden', !isAdmin);
-  $('hubLink').classList.toggle('hidden', !isAdmin); // Hub is Lexi's launcher (fleet convention)
+  const hubLink = $('hubLink');
+  hubLink.classList.remove('hidden');
+  // admins get the full hub (incl. Payroll); staff get the staff launcher
+  hubLink.href = isAdmin
+    ? 'https://tanawin-hub.tanawinbnb.workers.dev/'
+    : 'https://tanawin-hub.tanawinbnb.workers.dev/staff';
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   const tasks = [loadOrders(), loadMenu(), loadRooms(), loadSettings()];
