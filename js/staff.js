@@ -248,8 +248,22 @@ function orderCard(o) {
     <ul class="order-items">${items}</ul>
     ${o.note ? `<div class="order-note">📝 ${esc(o.note)}</div>` : ''}
     <div class="order-total-row"><span>Total</span><span>${peso(o.total)}</span></div>
+    ${hasDiscount(o) ? `
+      <div class="discount-row"><span>♿ Senior/PWD ×${o.discount_eligible} of ${o.discount_diners} diner${o.discount_diners > 1 ? 's' : ''} (−20%)</span><span>−${peso(o.discount_amount)}</span></div>
+      <div class="order-total-row due-row"><span>Amount due</span><span>${peso(Number(o.total) - Number(o.discount_amount))}</span></div>` : ''}
+    <div class="discount-slot"></div>
     <div class="proof-slot"></div>
     <div class="order-actions"></div>`;
+
+  if (o.status !== 'cancelled') {
+    const slot = card.querySelector('.discount-slot');
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'discount-btn';
+    openBtn.textContent = hasDiscount(o) ? '✎ Edit Senior/PWD discount' : '♿ Senior/PWD discount…';
+    openBtn.onclick = () => { openBtn.classList.add('hidden'); slot.appendChild(discountForm(o, openBtn)); };
+    slot.before(openBtn);
+  }
 
   if (o.gcash_proof_url) {
     db.storage.from('gcash-proofs').createSignedUrl(o.gcash_proof_url, 3600).then(({ data }) => {
@@ -311,6 +325,84 @@ async function setStatus(id, status) {
   if (o) { Object.assign(o, patch); renderOrders(); }
 }
 
+// ── Senior/PWD discount (RA 9994 / RA 10754) ────────────────────────
+// Tanawin is not VAT-registered, so the legal computation is simply 20%
+// of the eligible diners' proportionate share — there is NO /1.12 VAT
+// step here, and adding one would over-discount.
+
+const hasDiscount = o => Number(o.discount_amount) > 0;
+
+function computeDiscount(total, diners, eligible) {
+  const perHead = Number(total) / diners;
+  const share = perHead * eligible;
+  const amount = Math.round(share * 0.2 * 100) / 100;
+  return { perHead, share, amount, due: Number(total) - amount };
+}
+
+function discountForm(o, openBtn) {
+  const wrap = document.createElement('div');
+  wrap.className = 'discount-form';
+  wrap.innerHTML = `
+    <div class="discount-hint">Ask to see the Senior Citizen / PWD ID first. 20% off the eligible diners' share of the bill.</div>
+    <div class="discount-inputs">
+      <label>Diners <input type="number" class="disc-diners" min="1" step="1" inputmode="numeric" value="${o.discount_diners || 1}"></label>
+      <label>Senior/PWD <input type="number" class="disc-eligible" min="1" step="1" inputmode="numeric" value="${o.discount_eligible || 1}"></label>
+    </div>
+    <div class="discount-preview"></div>
+    <div class="order-actions">
+      <button type="button" class="btn-primary disc-apply">Apply</button>
+      ${hasDiscount(o) ? '<button type="button" class="btn-secondary disc-remove">Remove</button>' : ''}
+      <button type="button" class="btn-secondary disc-close">Close</button>
+    </div>`;
+
+  const dinersEl = wrap.querySelector('.disc-diners');
+  const eligibleEl = wrap.querySelector('.disc-eligible');
+  const preview = wrap.querySelector('.discount-preview');
+  const applyBtn = wrap.querySelector('.disc-apply');
+
+  const refresh = () => {
+    const diners = parseInt(dinersEl.value, 10);
+    const eligible = parseInt(eligibleEl.value, 10);
+    if (!(diners >= 1) || !(eligible >= 1) || eligible > diners) {
+      preview.textContent = eligible > diners
+        ? 'Senior/PWD count can’t exceed the number of diners.'
+        : 'Enter how many diners and how many are senior/PWD.';
+      applyBtn.disabled = true;
+      return null;
+    }
+    const c = computeDiscount(o.total, diners, eligible);
+    preview.innerHTML = `
+      <div><span>Per head (${peso(o.total)} ÷ ${diners})</span><span>${peso(c.perHead.toFixed(2))}</span></div>
+      <div><span>Senior/PWD share (× ${eligible})</span><span>${peso(c.share.toFixed(2))}</span></div>
+      <div><span>Discount (20%)</span><span>−${peso(c.amount)}</span></div>
+      <div class="preview-due"><span>Amount due</span><span>${peso(c.due)}</span></div>`;
+    applyBtn.disabled = false;
+    return { diners, eligible, amount: c.amount };
+  };
+  dinersEl.oninput = eligibleEl.oninput = refresh;
+  refresh();
+
+  applyBtn.onclick = () => {
+    const v = refresh();
+    if (v) saveDiscount(o.id, { discount_diners: v.diners, discount_eligible: v.eligible, discount_amount: v.amount, discount_by: currentName });
+  };
+  const removeBtn = wrap.querySelector('.disc-remove');
+  if (removeBtn) removeBtn.onclick = () => {
+    if (confirm('Remove the Senior/PWD discount from this order?'))
+      saveDiscount(o.id, { discount_diners: null, discount_eligible: null, discount_amount: null, discount_by: null });
+  };
+  wrap.querySelector('.disc-close').onclick = () => { wrap.remove(); openBtn.classList.remove('hidden'); };
+  return wrap;
+}
+
+async function saveDiscount(id, patch) {
+  const { error } = await db.from('orders').update(patch).eq('id', id);
+  if (error) { toast('Could not save the discount — try again.'); console.error(error); return; }
+  const o = state.orders.get(id);
+  if (o) { Object.assign(o, patch); renderOrders(); }
+  toast(patch.discount_amount ? `Discount applied: −${peso(patch.discount_amount)}` : 'Discount removed.');
+}
+
 // ── Excel export ────────────────────────────────────────────────────
 // SheetJS loads lazily from the CDN only when someone actually exports.
 
@@ -366,8 +458,12 @@ $('exportBtn').onclick = async () => {
       'Room': o.is_dining_in ? 'Dining in' : (o.room_number || ''),
       'Status': o.status, 'Payment': o.payment_intent,
       'Total (PHP)': Number(o.total),
+      'Diners': o.discount_diners ?? '', 'Senior/PWD': o.discount_eligible ?? '',
+      'Senior/PWD discount (PHP)': Number(o.discount_amount) || 0,
+      'Amount due (PHP)': Number(o.total) - (Number(o.discount_amount) || 0),
       'Items': (o.order_items || []).map(i => `${i.item_name} x${i.qty}`).join('; '),
       'Note': o.note || '', 'Ready by': o.handled_by || '', 'Cancelled by': o.cancelled_by || '',
+      'Discount by': o.discount_by || '',
     }; });
     const linesSheet = data.flatMap(o => (o.order_items || []).map(i => ({
       'Order #': Number(o.order_number), 'Date': dt(o.created_at).date,
