@@ -39,6 +39,7 @@ function showLogin() {
 async function showApp(user) {
   const meta = user?.user_metadata || {};
   currentRole = meta.role || 'staff';
+  currentName = meta.name || 'Staff';
   currentAuthId = user?.id || null;
   $('currentUserName').textContent = meta.name || '';
   const isAdmin = meta.role === 'admin';
@@ -62,6 +63,7 @@ async function showApp(user) {
 }
 
 let currentRole = 'staff';
+let currentName = 'Staff';
 let currentIsPrime = false;
 let currentAuthId = null;
 
@@ -224,8 +226,10 @@ function orderCard(o) {
       ? '<span class="chip pay-gcash">GCash / Bank</span>'
       : '<span class="chip pay-cash">Cash</span>';
 
-  const doneChip = o.status === 'delivered' ? '<span class="chip status-chip-delivered">Ready · sent out</span>'
-    : o.status === 'cancelled' ? '<span class="chip status-chip-cancelled">Cancelled</span>' : '';
+  const doneChip = o.status === 'delivered'
+    ? `<span class="chip status-chip-delivered">Ready · sent out${o.handled_by ? ' by ' + esc(o.handled_by) : ''}</span>`
+    : o.status === 'cancelled'
+      ? `<span class="chip status-chip-cancelled">Cancelled${o.cancelled_by ? ' by ' + esc(o.cancelled_by) : ''}</span>` : '';
 
   card.innerHTML = `
     <div class="order-top">
@@ -268,6 +272,9 @@ function orderCard(o) {
   } else if (o.status === 'preparing') {
     actions.appendChild(actionBtn('Order ready 🛎', () => setStatus(o.id, 'delivered')));
     actions.appendChild(cancelBtn(o.id));
+  } else if (o.status === 'cancelled') {
+    // accidental cancels happen — any staff can bring the order back
+    actions.appendChild(actionBtn('Uncancel — back to queue', () => setStatus(o.id, 'new')));
   }
   return card;
 }
@@ -289,11 +296,92 @@ function cancelBtn(id) {
 }
 
 async function setStatus(id, status) {
-  const { error } = await db.from('orders').update({ status }).eq('id', id);
+  const patch = { status };
+  if (status === 'delivered') patch.handled_by = currentName;
+  if (status === 'cancelled') patch.cancelled_by = currentName;
+  if (status === 'new') patch.cancelled_by = null; // uncancel wipes the blame
+  const { error } = await db.from('orders').update(patch).eq('id', id);
   if (error) { toast('Update failed — try again.'); console.error(error); return; }
   const o = state.orders.get(id);
-  if (o) { o.status = status; renderOrders(); }
+  if (o) { Object.assign(o, patch); renderOrders(); }
 }
+
+// ── Excel export ────────────────────────────────────────────────────
+// SheetJS loads lazily from the CDN only when someone actually exports.
+
+let xlsxReady = null;
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve();
+  xlsxReady ||= new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+    s.onload = resolve;
+    s.onerror = () => { xlsxReady = null; reject(new Error('could not load sheet library')); };
+    document.head.appendChild(s);
+  });
+  return xlsxReady;
+}
+
+$('exportToggle').onclick = () => {
+  const panel = $('exportPanel');
+  const opening = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden');
+  if (opening && !$('exportFrom').value) {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    // local-date string (toISOString would shift to UTC and land a day early)
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    $('exportFrom').value = iso(first);
+    $('exportTo').value = iso(now);
+  }
+};
+
+$('exportBtn').onclick = async () => {
+  const from = $('exportFrom').value, to = $('exportTo').value;
+  if (!from || !to) { toast('Pick both dates.'); return; }
+  const btn = $('exportBtn');
+  btn.disabled = true;
+  try {
+    await loadXlsx();
+    // 'to' is inclusive: query < the following midnight (local time)
+    const end = new Date(to + 'T00:00:00');
+    end.setDate(end.getDate() + 1);
+    const { data, error } = await db.from('orders')
+      .select('*, order_items(item_name, qty, unit_price, line_total)')
+      .gte('created_at', new Date(from + 'T00:00:00').toISOString())
+      .lt('created_at', end.toISOString())
+      .order('created_at');
+    if (error) throw error;
+    if (!data.length) { toast('No orders in that date range.'); return; }
+
+    const dt = iso => { const d = new Date(iso); return {
+      date: d.toLocaleDateString('en-PH'), time: d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) }; };
+    const ordersSheet = data.map(o => { const { date, time } = dt(o.created_at); return {
+      'Order #': Number(o.order_number), 'Date': date, 'Time': time,
+      'Room': o.is_dining_in ? 'Dining in' : (o.room_number || ''),
+      'Status': o.status, 'Payment': o.payment_intent,
+      'Total (PHP)': Number(o.total),
+      'Items': (o.order_items || []).map(i => `${i.item_name} x${i.qty}`).join('; '),
+      'Note': o.note || '', 'Ready by': o.handled_by || '', 'Cancelled by': o.cancelled_by || '',
+    }; });
+    const linesSheet = data.flatMap(o => (o.order_items || []).map(i => ({
+      'Order #': Number(o.order_number), 'Date': dt(o.created_at).date,
+      'Item': i.item_name, 'Qty': i.qty,
+      'Unit (PHP)': Number(i.unit_price), 'Line total (PHP)': Number(i.line_total),
+    })));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ordersSheet), 'Orders');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linesSheet), 'Line items');
+    XLSX.writeFile(wb, `tanawin-orders_${from}_to_${to}.xlsx`);
+    toast(`Exported ${data.length} orders.`);
+  } catch (err) {
+    console.error(err);
+    toast('Export failed — check your connection and try again.');
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 // ── Menu management ─────────────────────────────────────────────────
 

@@ -299,13 +299,13 @@ $('doneBtn').onclick = () => closeSheet();
 
 // Location: an explicit either/or. The access code below identifies the
 // room server-side — guests never pick (or mistype) a room name. Walk-in
-// diners get the Dining Area code from staff.
+// diners get the 3rd Floor Dining code from staff.
 $('locOptions').addEventListener('change', () => {
   const choice = document.querySelector('input[name="loc"]:checked')?.value;
   state.diningIn = choice === 'dining';
   $('noteInput').placeholder = state.diningIn
-    ? 'e.g. we’re at the table by the garden'
-    : 'e.g. less spicy, extra rice';
+    ? 'Any allergies or requests? Tell us where you’re seated too.'
+    : 'Any allergies, serve time preference, or other requests?';
 });
 
 // Returning guests keep their code for the whole stay.
@@ -396,7 +396,7 @@ $('placeOrderBtn').onclick = async () => {
     return;
   }
   if (!/^\d{6}$/.test(code)) {
-    toast('Please enter your 6-digit access code — it\'s on the card in your room, or ask our staff.');
+    toast('Please enter your 6-digit access code — it\'s in the ring binder in your room, or ask our staff.');
     return;
   }
   const { count } = cartTotals();
@@ -463,7 +463,7 @@ $('placeOrderBtn').onclick = async () => {
     console.error(err);
     const msg = String(err?.message || '');
     if (msg.includes('access code')) {
-      toast('That access code doesn\'t look right — please check the card in your room, or ask our staff.');
+      toast('That access code doesn\'t look right — please check the ring binder in your room, or ask our staff.');
     } else if (msg.includes('dining in only')) {
       toast('That code works for dining in only — for room service, use your room\'s own code.');
     } else if (msg.includes('too many orders')) {

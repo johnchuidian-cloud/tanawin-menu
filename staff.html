@@ -62,6 +62,17 @@
       <div class="filter-row">
         <button class="cat-pill active" data-filter="active">Active</button>
         <button class="cat-pill" data-filter="done">Done</button>
+        <button class="cat-pill export-toggle" id="exportToggle">⬇ Excel</button>
+      </div>
+      <div class="settings-card hidden" id="exportPanel">
+        <span class="field-label">Download orders as a spreadsheet</span>
+        <div class="export-dates">
+          <label class="field"><span class="field-label">From</span>
+            <input type="date" id="exportFrom"></label>
+          <label class="field"><span class="field-label">To</span>
+            <input type="date" id="exportTo"></label>
+        </div>
+        <button class="btn-primary" type="button" id="exportBtn">Download .xlsx</button>
       </div>
       <div id="ordersList"></div>
     </main>
@@ -72,11 +83,13 @@
       <div id="menuList"></div>
     </main>
 
-    <!-- Rooms: access codes given at check-in -->
+    <!-- Rooms: access codes (in each room's ring binder) -->
     <main id="tab-rooms" class="tab-panel hidden">
-      <p class="rooms-note">Give guests their room's code at check-in — every order needs one.
-        Walk-in diners get the <strong>Dining Area</strong> code. If a code leaks
-        (spam orders), tap <strong>New code</strong> to replace it instantly.</p>
+      <p class="rooms-note">Every order needs a room code. Guests find theirs in the
+        <strong>ring binder in their room</strong> (next to the QR poster page) — keep the
+        binders up to date if you change a code. Walk-in diners get the
+        <strong>3rd Floor Dining</strong> code from staff. If a code leaks (spam orders),
+        tap <strong>New code</strong> to replace it instantly — then update that room's binder.</p>
       <div id="roomsList"></div>
     </main>
 
