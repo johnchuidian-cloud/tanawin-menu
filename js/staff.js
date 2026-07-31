@@ -788,8 +788,8 @@ function staffRow(s) {
       <small>${roleLabel}</small>
     </div>
     <div class="menu-row-actions">
-      ${canToggleRole ? `<button class="icon-btn role-btn">${s.role === 'admin' ? 'Revoke<br>admin' : 'Make<br>admin'}</button>` : ''}
-      ${canSetPin ? `<button class="icon-btn pin-btn" title="Change PIN">New<br>PIN</button>` : ''}
+      ${canToggleRole ? `<button class="icon-btn text-btn role-btn">${s.role === 'admin' ? 'Revoke admin' : 'Make admin'}</button>` : ''}
+      ${canSetPin ? `<button class="icon-btn text-btn pin-btn" title="Change PIN">New PIN</button>` : ''}
       ${canRemove ? `<button class="icon-btn remove-btn" title="Remove">✕</button>` : ''}
     </div>`;
 

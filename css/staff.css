@@ -68,15 +68,8 @@
 .welcome { font-size: 20px; font-weight: 800; color: var(--ink); }
 .welcome-sub { color: var(--ink-soft); font-size: 14px; margin: 4px 0 14px; }
 
-.staff-me { display: flex; align-items: center; gap: 10px; font-size: 14px; }
-.hub-link {
-  text-decoration: none;
-  font-weight: 800;
-  border: 1px solid rgba(251, 246, 239, 0.55);
-  border-radius: 8px;
-  padding: 4px 9px;
-  opacity: 1;
-}
+.staff-me { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; }
+#currentUserName:not(:empty) { font-weight: 700; margin-right: 2px; }
 
 /* ── Header & tabs ──────────────────────────────────── */
 
@@ -84,6 +77,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   background: var(--terracotta-logo);
   color: var(--cream);
   padding: 14px 16px;
@@ -100,6 +95,27 @@
   opacity: 0.9;
 }
 .link-btn.danger { color: #A03A2A; opacity: 1; }
+
+/* Header links are real tappable chips, not underlined text — they sit on the
+   terracotta bar, so they're outlined in cream rather than filled. */
+.staff-header .link-btn {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  opacity: 1;
+  color: var(--cream);
+  background: rgba(251, 246, 239, 0.12);
+  border: 1px solid rgba(251, 246, 239, 0.55);
+  border-radius: 999px;
+  padding: 8px 13px;
+}
+.staff-header .link-btn:hover { background: rgba(251, 246, 239, 0.24); }
+.staff-header .link-btn:active { transform: translateY(1px); }
+.staff-header #logoutBtn { border-color: rgba(251, 246, 239, 0.35); }
 
 .staff-tabs {
   display: flex;
@@ -320,7 +336,7 @@
 .menu-row-info { min-width: 0; }
 .menu-row-info strong { font-size: 14.5px; display: block; }
 .menu-row-info small { color: var(--ink-soft); font-size: 12.5px; }
-.menu-row-actions { display: flex; align-items: center; gap: 6px; }
+.menu-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .icon-btn {
   border: 1px solid var(--line);
   background: #fff;
@@ -420,6 +436,28 @@
   margin-bottom: 8px;
 }
 .staff-row .remove-btn { color: #A03A2A; border-color: #e0b9b0; font-size: 15px; }
+
+/* Word-labelled buttons size to their text — the 34px icon square used to
+   clip "Revoke admin" / "New PIN" and spill them out of the card. */
+.icon-btn.text-btn {
+  width: auto;
+  height: auto;
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--terracotta);
+  border-color: var(--terracotta-light);
+}
+.staff-row .pin-btn { color: var(--ink-soft); border-color: var(--line); }
+
+/* Phones: let the buttons drop to their own line so a long name and
+   "Revoke admin" never fight for the same row. */
+@media (max-width: 560px) {
+  .staff-row { grid-template-columns: auto 1fr; }
+  .staff-row .menu-row-actions { grid-column: 1 / -1; justify-content: flex-end; }
+}
 #tab-staff #newStaffRole {
   width: 100%;
   border: 1px solid var(--line);
