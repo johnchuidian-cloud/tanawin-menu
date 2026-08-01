@@ -982,6 +982,8 @@ let pushSub = null;
 const isInstalled = () =>
   matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
+const isApple = () => /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 const pushSupported = () =>
   !!swReg && 'PushManager' in window && 'Notification' in window;
 
@@ -999,7 +1001,11 @@ function renderPushChip() {
     c.classList.add('muted');
     c.textContent = '📲 Alerts when closed';
     c.title = 'This browser cannot receive alerts while the app is closed.';
-    hint.textContent = 'iPhone: tap Share → “Add to Home Screen”, open Tanawin Staff from there, then turn this on.';
+    // Staff are on Android, and the usual cause there is opening the link from
+    // inside a chat app's built-in browser, which has no push support.
+    hint.textContent = isApple()
+      ? 'iPhone: tap Share → “Add to Home Screen”, open Tanawin Staff from there, then turn this on.'
+      : 'Open this page in the Chrome app itself — alerts don’t work in the small browser that opens inside Messenger/Viber. Tap ⋮ → “Open in Chrome”.';
     hint.classList.remove('hidden');
     return;
   }
@@ -1013,9 +1019,9 @@ function renderPushChip() {
   // On a phone browser (not installed) push often works on Android but never
   // on iOS — nudge toward installing either way, it's the reliable path.
   if (!pushSub && !isInstalled() && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
-    hint.textContent = /iPhone|iPad/i.test(navigator.userAgent)
+    hint.textContent = isApple()
       ? 'iPhone: tap Share → “Add to Home Screen” first, then open Tanawin Staff from the Home Screen.'
-      : 'Tip: use Chrome’s “Install app” / “Add to Home screen” menu so alerts keep working reliably.';
+      : 'Tip: Chrome menu ⋮ → “Install app” gives you a Tanawin icon. If alerts arrive late, also set Settings → Apps → Chrome → Battery → Unrestricted.';
     hint.classList.remove('hidden');
   }
 }
@@ -1034,6 +1040,7 @@ $('pushChip').onclick = async () => {
   }
   const btn = $('pushChip');
   btn.disabled = true;
+  btn.textContent = '📲 Setting up…';   // a greyed chip with no explanation reads as broken
   try {
     if (pushSub) {                                   // turning it off
       await db.from('push_subscriptions').delete().eq('endpoint', pushSub.endpoint);
@@ -1045,10 +1052,12 @@ $('pushChip').onclick = async () => {
         const res = await Notification.requestPermission();
         if (res !== 'granted') { toast('Alerts not turned on.'); return; }
       }
-      const sub = await swReg.pushManager.subscribe({
+      // subscribe() talks to the push service, which can hang for minutes on a
+      // bad connection — cap it so the chip never sits there greyed out.
+      const sub = await withTimeout(swReg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
+      }), 20000, 'subscribe');
       const json = sub.toJSON();
       const { error } = await db.from('push_subscriptions').upsert({
         endpoint: sub.endpoint,
@@ -1063,12 +1072,22 @@ $('pushChip').onclick = async () => {
     }
   } catch (err) {
     console.error(err);
-    toast('Could not change that — try again.');
+    toast(err?.message === 'subscribe timed out'
+      ? 'Setting up alerts timed out — check the internet connection and try again.'
+      : 'Could not change that — try again.');
   } finally {
     btn.disabled = false;
-    renderAlertChips();
+    renderAlertChips();      // rewrites the label, clearing "Setting up…"
   }
 };
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms); }),
+  ]);
+}
 
 $('wakeChip').onclick = () => {
   const on = localStorage.getItem(WAKE_PREF) === '1';
