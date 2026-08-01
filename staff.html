@@ -8,6 +8,11 @@
   <meta name="theme-color" content="#933212">
   <link rel="icon" href="assets/icon-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <!-- Installable so staff can get push alerts with the app closed (iOS only
+       allows notifications from a Home Screen install). -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Tanawin Staff">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/staff.css">
 </head>
@@ -61,8 +66,10 @@
     <main id="tab-orders" class="tab-panel">
       <div class="alert-bar">
         <button class="alert-chip" type="button" id="notifyChip">🔔 Turn on alerts</button>
+        <button class="alert-chip" type="button" id="pushChip">📲 Alerts when closed</button>
         <button class="alert-chip" type="button" id="wakeChip">🔆 Keep screen on</button>
       </div>
+      <p class="install-hint hidden" id="installHint"></p>
       <div class="filter-row">
         <button class="cat-pill active" data-filter="active">Active</button>
         <button class="cat-pill" data-filter="done">Done</button>

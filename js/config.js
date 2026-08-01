@@ -5,6 +5,11 @@
 const SUPABASE_URL = 'https://lkeuiquqogtevsgvaddf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZXVpcXVxb2d0ZXZzZ3ZhZGRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNDIxNDUsImV4cCI6MjA5ODkxODE0NX0.nw_5E2F2OsQhT3DlRcigO8Vm9uYkgM80UqB7dMx5X8w';
 
+// Web push: the VAPID *public* key is meant to ship in the client — it only
+// lets this site's service worker subscribe. The private half is a function
+// secret on Supabase (order-push signs with it).
+const VAPID_PUBLIC_KEY = 'BED5rzbHGdM5k4HX2p-7Ws5pH2Nn1OgKIXzYq0Lh-28fXSnLREomMPSgn7hgtvcTNKwA_0Hx9F_oqRycTOwVWAA';
+
 // GCash QR lives as a public asset in menu-images (handoff §8 decision);
 // the checkout hides the GCash panel if this image doesn't exist yet.
 const GCASH_QR_URL = `${SUPABASE_URL}/storage/v1/object/public/menu-images/gcash-qr.jpg`;

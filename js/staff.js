@@ -920,8 +920,12 @@ async function initAlerts() {
   // Android Chrome only allows notifications via a service-worker registration
   // (`new Notification()` throws there), so register before we need one.
   if ('serviceWorker' in navigator) {
-    try { swReg = await navigator.serviceWorker.register('sw.js'); } catch { /* desktop fallback below */ }
+    try {
+      swReg = await navigator.serviceWorker.register('sw.js');
+      await navigator.serviceWorker.ready;
+    } catch { /* desktop fallback below */ }
   }
+  await refreshPushState();
   renderAlertChips();
   if (localStorage.getItem(WAKE_PREF) === '1') acquireWake();
 }
@@ -941,6 +945,8 @@ function renderAlertChips() {
     : perm === 'unsupported'
       ? 'This browser cannot show notifications. On iPhone, add the dashboard to your Home Screen first.'
       : 'Pop up an alert when an order arrives while this tab is in the background.';
+
+  renderPushChip();
 
   const w = $('wakeChip');
   const on = localStorage.getItem(WAKE_PREF) === '1';
@@ -963,6 +969,105 @@ $('notifyChip').onclick = async () => {
   renderAlertChips();
   if (res === 'granted') { primeChime(); chime(); showOrderNotification(null); toast('Alerts on.'); }
   else toast('Alerts not turned on.');
+};
+
+// ── Push: alerts with the app closed ────────────────────────────────
+// Needs the dashboard INSTALLED (Home Screen / "Install app") on phones —
+// iOS refuses notifications to a plain Safari tab, and Android only offers
+// the install prompt for an installed-capable page. Delivery also needs a
+// working data connection, which is exactly why SMS stays the fallback.
+
+let pushSub = null;
+
+const isInstalled = () =>
+  matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+const pushSupported = () =>
+  !!swReg && 'PushManager' in window && 'Notification' in window;
+
+async function refreshPushState() {
+  pushSub = swReg ? await swReg.pushManager.getSubscription() : null;
+}
+
+function renderPushChip() {
+  const c = $('pushChip');
+  const hint = $('installHint');
+  hint.classList.add('hidden');
+
+  if (!pushSupported()) {
+    c.classList.remove('on');
+    c.classList.add('muted');
+    c.textContent = '📲 Alerts when closed';
+    c.title = 'This browser cannot receive alerts while the app is closed.';
+    hint.textContent = 'iPhone: tap Share → “Add to Home Screen”, open Tanawin Staff from there, then turn this on.';
+    hint.classList.remove('hidden');
+    return;
+  }
+  c.classList.remove('muted');
+  c.classList.toggle('on', !!pushSub);
+  c.textContent = pushSub ? '📲 Alerts when closed: on' : '📲 Alerts when closed';
+  c.title = pushSub
+    ? 'This device gets order alerts even with the dashboard closed. Tap to turn off.'
+    : 'Get order alerts on this device even when the dashboard is closed.';
+
+  // On a phone browser (not installed) push often works on Android but never
+  // on iOS — nudge toward installing either way, it's the reliable path.
+  if (!pushSub && !isInstalled() && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    hint.textContent = /iPhone|iPad/i.test(navigator.userAgent)
+      ? 'iPhone: tap Share → “Add to Home Screen” first, then open Tanawin Staff from the Home Screen.'
+      : 'Tip: use Chrome’s “Install app” / “Add to Home screen” menu so alerts keep working reliably.';
+    hint.classList.remove('hidden');
+  }
+}
+
+// VAPID keys travel as base64url; PushManager wants raw bytes.
+function urlBase64ToUint8Array(base64) {
+  const padded = (base64 + '='.repeat((4 - base64.length % 4) % 4))
+    .replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+}
+
+$('pushChip').onclick = async () => {
+  if (!pushSupported()) {
+    toast('This browser cannot alert you while the app is closed. On iPhone, add it to the Home Screen first.');
+    return;
+  }
+  const btn = $('pushChip');
+  btn.disabled = true;
+  try {
+    if (pushSub) {                                   // turning it off
+      await db.from('push_subscriptions').delete().eq('endpoint', pushSub.endpoint);
+      await pushSub.unsubscribe();
+      pushSub = null;
+      toast('This device will no longer get alerts when closed.');
+    } else {
+      if (Notification.permission !== 'granted') {
+        const res = await Notification.requestPermission();
+        if (res !== 'granted') { toast('Alerts not turned on.'); return; }
+      }
+      const sub = await swReg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+      const json = sub.toJSON();
+      const { error } = await db.from('push_subscriptions').upsert({
+        endpoint: sub.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+        auth_uid: currentAuthId,
+        staff_name: currentName,
+      }, { onConflict: 'endpoint' });
+      if (error) { await sub.unsubscribe(); throw error; }
+      pushSub = sub;
+      toast('Done — this device gets alerts even when closed.');
+    }
+  } catch (err) {
+    console.error(err);
+    toast('Could not change that — try again.');
+  } finally {
+    btn.disabled = false;
+    renderAlertChips();
+  }
 };
 
 $('wakeChip').onclick = () => {
