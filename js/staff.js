@@ -65,6 +65,8 @@ async function showApp(user) {
   if (isAdmin) tasks.push(loadStaff());
   await Promise.all(tasks);
   subscribeOrders();
+  initAlerts();
+  if (waitingCount()) startNagging(); // orders left waiting from before this sign-in
 }
 
 let currentRole = 'staff';
@@ -174,6 +176,8 @@ function subscribeOrders() {
           state.orders.set(data.id, data);
           renderOrders();
           chime();
+          startNagging();          // keeps chiming until someone starts prepping
+          showOrderNotification(data);
           toast(`New order #${data.order_number} — ${data.is_dining_in ? 'Dining in' : 'Room ' + data.room_number}`);
         }
       }, 600);
@@ -207,6 +211,7 @@ function renderOrders() {
   const activeCount = [...state.orders.values()].filter(o => active.includes(o.status)).length;
   $('activeBadge').textContent = activeCount;
   $('activeBadge').classList.toggle('hidden', activeCount === 0);
+  syncAlertState();
 
   list.innerHTML = '';
   if (!rows.length) {
@@ -893,6 +898,130 @@ $('qrUpload').onchange = async () => {
   $('settingsQr').src = `${GCASH_QR_URL}?t=${Date.now()}`;
   toast('Payment QR replaced.');
 };
+
+// ── Order alerts ────────────────────────────────────────────────────
+// The dashboard has to be open for any of this to fire — there's no push
+// subscription. What this adds on top of the toast: a system notification
+// while the tab is backgrounded, an optional screen wake-lock for the
+// front-desk duty device, and a chime that keeps nagging until someone
+// actually starts prepping.
+
+const NAG_EVERY_MS = 20000;
+const NAG_MAX = 15;            // ~5 min, then it gives up (nobody's there)
+const WAKE_PREF = 'tanawin-keep-awake';
+const BASE_TITLE = document.title;
+
+let swReg = null;
+let nagTimer = null;
+let nagsLeft = 0;
+let wakeSentinel = null;
+
+async function initAlerts() {
+  // Android Chrome only allows notifications via a service-worker registration
+  // (`new Notification()` throws there), so register before we need one.
+  if ('serviceWorker' in navigator) {
+    try { swReg = await navigator.serviceWorker.register('sw.js'); } catch { /* desktop fallback below */ }
+  }
+  renderAlertChips();
+  if (localStorage.getItem(WAKE_PREF) === '1') acquireWake();
+}
+
+const canNotify = () => 'Notification' in window || !!swReg;
+
+function renderAlertChips() {
+  const n = $('notifyChip');
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  n.classList.toggle('on', perm === 'granted');
+  n.classList.toggle('muted', perm === 'denied' || perm === 'unsupported');
+  n.textContent = perm === 'granted' ? '🔔 Alerts on'
+    : perm === 'denied' ? '🔔 Alerts blocked'
+      : perm === 'unsupported' ? '🔔 Alerts unavailable' : '🔔 Turn on alerts';
+  n.title = perm === 'denied'
+    ? 'Your browser is blocking notifications for this site — re-allow them in browser settings.'
+    : perm === 'unsupported'
+      ? 'This browser cannot show notifications. On iPhone, add the dashboard to your Home Screen first.'
+      : 'Pop up an alert when an order arrives while this tab is in the background.';
+
+  const w = $('wakeChip');
+  const on = localStorage.getItem(WAKE_PREF) === '1';
+  w.classList.toggle('on', on);
+  w.textContent = on ? '🔆 Screen stays on' : '🔆 Keep screen on';
+  w.title = 'Stops this device from sleeping while the dashboard is open. Best for the front-desk phone or tablet.';
+}
+
+$('notifyChip').onclick = async () => {
+  if (!('Notification' in window)) {
+    toast('This browser cannot show alerts. On iPhone, add the dashboard to your Home Screen first.');
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    toast('Alerts are blocked in your browser settings — allow them there, then tap again.');
+    return;
+  }
+  if (Notification.permission === 'granted') { showOrderNotification(null); return; } // re-tap = test alert
+  const res = await Notification.requestPermission();
+  renderAlertChips();
+  if (res === 'granted') { primeChime(); chime(); showOrderNotification(null); toast('Alerts on.'); }
+  else toast('Alerts not turned on.');
+};
+
+$('wakeChip').onclick = () => {
+  const on = localStorage.getItem(WAKE_PREF) === '1';
+  if (on) { localStorage.removeItem(WAKE_PREF); releaseWake(); }
+  else { localStorage.setItem(WAKE_PREF, '1'); acquireWake(); }
+  renderAlertChips();
+};
+
+// `o` null = the test alert fired by tapping the chip.
+async function showOrderNotification(o) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const title = o ? `New order #${o.order_number}` : 'Tanawin alerts are on';
+  const body = o
+    ? `${o.is_dining_in ? 'Dining in' : 'Room ' + (o.room_number || '?')} · ${peso(o.total)}`
+    : 'This is how a new order will look.';
+  const opts = { body, icon: 'assets/icon-192.png', badge: 'assets/icon-192.png',
+                 tag: o ? `order-${o.id}` : 'test', renotify: true };
+  try {
+    if (swReg?.showNotification) await swReg.showNotification(title, opts);
+    else new Notification(title, opts);
+  } catch (err) { console.warn('notification failed', err); }
+}
+
+async function acquireWake() {
+  if (!('wakeLock' in navigator) || wakeSentinel || document.visibilityState !== 'visible') return;
+  try {
+    wakeSentinel = await navigator.wakeLock.request('screen');
+    wakeSentinel.addEventListener('release', () => { wakeSentinel = null; });
+  } catch { wakeSentinel = null; }
+}
+
+function releaseWake() { wakeSentinel?.release(); wakeSentinel = null; }
+
+// The OS drops the wake lock whenever the tab is hidden — take it back.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && localStorage.getItem(WAKE_PREF) === '1') acquireWake();
+});
+
+function startNagging() {
+  stopNagging();
+  nagsLeft = NAG_MAX;
+  nagTimer = setInterval(() => {
+    if (!waitingCount() || nagsLeft-- <= 0) { stopNagging(); return; }
+    chime();
+  }, NAG_EVERY_MS);
+}
+
+function stopNagging() { clearInterval(nagTimer); nagTimer = null; }
+
+const waitingCount = () => [...state.orders.values()].filter(o => o.status === 'new').length;
+
+// Unacknowledged count rides in the tab title so a backgrounded dashboard
+// still shows something.
+function syncAlertState() {
+  const waiting = waitingCount();
+  document.title = waiting ? `(${waiting}) ${BASE_TITLE}` : BASE_TITLE;
+  if (!waiting) stopNagging();
+}
 
 // ── Chime (no audio asset needed) ───────────────────────────────────
 

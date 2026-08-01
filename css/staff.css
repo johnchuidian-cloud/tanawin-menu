@@ -148,6 +148,28 @@
 
 .tab-panel { max-width: 640px; margin: 0 auto; padding: 14px; }
 
+/* Per-device alert switches — each phone/tablet sets its own. */
+.alert-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; }
+.alert-chip {
+  flex: 0 0 auto;
+  border: 1px dashed var(--line);
+  background: #fff;
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.alert-chip.on {
+  border-style: solid;
+  border-color: var(--green);
+  background: #E7F0E7;
+  color: var(--green);
+}
+.alert-chip.muted { opacity: 0.6; }
+
 .filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
 .export-toggle { margin-left: auto; }
 .export-dates { display: flex; gap: 10px; }
