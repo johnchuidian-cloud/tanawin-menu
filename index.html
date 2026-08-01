@@ -69,10 +69,12 @@
       </fieldset>
 
       <label class="field">
-        <span class="field-label">Access code (from check-in)</span>
+        <span class="field-label">Access code</span>
+        <!-- Codes are NOT handed out at check-in: they live in each room's ring
+             binder. Guests kept missing this as small print, so it's a callout. -->
+        <p class="code-where">📒 Your 6-digit code is in the <strong>ring binder in your room</strong><span>Or just ask any of our staff.</span></p>
         <input type="text" id="accessCode" class="code-input" inputmode="numeric" pattern="[0-9]*"
                maxlength="6" placeholder="6-digit code" autocomplete="off">
-        <small class="code-hint">In the ring binder in your room, or ask our staff.</small>
       </label>
 
       <fieldset class="field">
@@ -124,7 +126,8 @@
       <ol class="tracker" id="trackerSteps">
         <li data-step="new"><span class="dot"></span>Order received</li>
         <li data-step="preparing"><span class="dot"></span>Being prepped</li>
-        <li data-step="delivered"><span class="dot"></span>Ready — on its way!</li>
+        <li data-step="on_the_way"><span class="dot"></span>Done prepping — on its way!</li>
+        <li data-step="delivered"><span class="dot"></span>Delivered</li>
       </ol>
 
       <p class="tracker-hint">Keep this page open — it updates by itself.

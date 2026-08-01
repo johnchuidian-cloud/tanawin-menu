@@ -325,6 +325,22 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
   color: var(--ink-soft);
   margin-top: 6px;
 }
+/* Where-to-find-the-code callout. Sits ABOVE the input so guests read it
+   before hunting for a code — as small print under the box it got missed.
+   Codes are never handed out at check-in; they live in the room's binder. */
+.code-where {
+  display: block;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--cream-deep);
+  border-left: 4px solid var(--terracotta);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 10px;
+}
+.code-where strong { color: var(--terracotta); }
+.code-where span { display: block; color: var(--ink-soft); font-size: 13px; margin-top: 2px; }
 
 .pay-options { display: flex; flex-direction: column; gap: 8px; }
 .pay-options label {

@@ -229,6 +229,7 @@
 .chip.room-chip { background: var(--terracotta); color: var(--cream); }
 .chip.pay-gcash { background: #E7F0E7; color: var(--green); }
 .chip.pay-cash { background: #FBF0DC; color: var(--amber); }
+.chip.status-chip-otw { background: #FBF0DC; color: var(--amber); }
 .chip.status-chip-delivered { background: #E7F0E7; color: var(--green); }
 .chip.status-chip-cancelled { background: #F6E3DF; color: #A03A2A; }
 

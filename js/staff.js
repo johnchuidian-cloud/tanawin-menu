@@ -203,7 +203,8 @@ document.querySelectorAll('.filter-row .cat-pill').forEach(pill => {
 
 function renderOrders() {
   const list = $('ordersList');
-  const active = ['new', 'preparing'];
+  // an order isn't finished until it's actually been handed over
+  const active = ['new', 'preparing', 'on_the_way'];
   const rows = [...state.orders.values()]
     .filter(o => state.filter === 'active' ? active.includes(o.status) : !active.includes(o.status))
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -236,10 +237,13 @@ function orderCard(o) {
       ? '<span class="chip pay-gcash">GCash / Bank</span>'
       : '<span class="chip pay-cash">Cash</span>';
 
-  const doneChip = o.status === 'delivered'
-    ? `<span class="chip status-chip-delivered">Ready · sent out${o.handled_by ? ' by ' + esc(o.handled_by) : ''}</span>`
-    : o.status === 'cancelled'
-      ? `<span class="chip status-chip-cancelled">Cancelled${o.cancelled_by ? ' by ' + esc(o.cancelled_by) : ''}</span>` : '';
+  const by = o.handled_by ? ' by ' + esc(o.handled_by) : '';
+  const doneChip = o.status === 'on_the_way'
+    ? `<span class="chip status-chip-otw">On the way${by}</span>`
+    : o.status === 'delivered'
+      ? `<span class="chip status-chip-delivered">Delivered${by}</span>`
+      : o.status === 'cancelled'
+        ? `<span class="chip status-chip-cancelled">Cancelled${o.cancelled_by ? ' by ' + esc(o.cancelled_by) : ''}</span>` : '';
 
   card.innerHTML = `
     <div class="order-top">
@@ -294,7 +298,10 @@ function orderCard(o) {
     actions.appendChild(actionBtn('Start prepping', () => setStatus(o.id, 'preparing')));
     actions.appendChild(cancelBtn(o.id));
   } else if (o.status === 'preparing') {
-    actions.appendChild(actionBtn('Order ready 🛎', () => setStatus(o.id, 'delivered')));
+    actions.appendChild(actionBtn('Done prepping — on the way 🛎', () => setStatus(o.id, 'on_the_way')));
+    actions.appendChild(cancelBtn(o.id));
+  } else if (o.status === 'on_the_way') {
+    actions.appendChild(actionBtn('Delivered ✓', () => setStatus(o.id, 'delivered')));
     actions.appendChild(cancelBtn(o.id));
   } else if (o.status === 'cancelled') {
     // accidental cancels happen — any staff can bring the order back
@@ -321,7 +328,9 @@ function cancelBtn(id) {
 
 async function setStatus(id, status) {
   const patch = { status };
-  if (status === 'delivered') patch.handled_by = currentName;
+  // credit whoever carried it out; "Delivered ✓" is often tapped by the same
+  // person moments later, so don't overwrite that with a later tapper
+  if (status === 'on_the_way') patch.handled_by = currentName;
   if (status === 'cancelled') patch.cancelled_by = currentName;
   if (status === 'new') patch.cancelled_by = null; // uncancel wipes the blame
   const { error } = await db.from('orders').update(patch).eq('id', id);

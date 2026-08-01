@@ -486,18 +486,23 @@ const TRACK_KEY = 'tanawin-track-order';
 const TRACK_TTL = 3 * 60 * 60 * 1000; // stop tracking 3h-old orders
 let trackTimer = null;
 
-const STEP_ORDER = ['new', 'preparing', 'delivered'];
+const STEP_ORDER = ['new', 'preparing', 'on_the_way', 'delivered'];
 const STATUS_HEADLINE = {
   new: 'Order received!',
   preparing: 'Being prepped 👨‍🍳',
-  delivered: 'Ready! On its way in a few minutes 🛎',
+  on_the_way: 'Done prepping — on its way to you 🛎',
+  delivered: 'Delivered — enjoy! 😋',
   cancelled: 'Order cancelled',
 };
 const BANNER_TEXT = {
   new: n => `Order #${n} — received, in the queue · tap to view`,
   preparing: n => `Order #${n} — being prepped 👨‍🍳 · tap to view`,
-  delivered: n => `Order #${n} — ready! On its way 🛎`,
+  on_the_way: n => `Order #${n} — on its way to you 🛎`,
+  delivered: n => `Order #${n} — delivered, enjoy! 😋`,
 };
+// the moment worth celebrating for the guest is "it's coming", not the
+// staff's later confirmation tap
+const isFinalStep = s => s === 'on_the_way' || s === 'delivered';
 
 function trackedOrder() {
   try {
@@ -530,14 +535,14 @@ function renderTracker(status) {
     li.classList.toggle('current', idx === stepIdx && status !== 'delivered');
   });
   $('trackerHeading').textContent = STATUS_HEADLINE[status] || status;
-  $('confirmStep').classList.toggle('is-ready', status === 'delivered');
+  $('confirmStep').classList.toggle('is-ready', isFinalStep(status));
   // banner (only when the sheet is closed and the order is still in flight)
   const banner = $('orderBanner');
   if (status === 'cancelled') {
     banner.classList.add('hidden');
   } else {
-    banner.textContent = BANNER_TEXT[status](t.order_number);
-    banner.classList.toggle('ready', status === 'delivered');
+    banner.textContent = (BANNER_TEXT[status] || BANNER_TEXT.new)(t.order_number);
+    banner.classList.toggle('ready', isFinalStep(status));
     banner.classList.toggle('hidden', !$('cartSheet').classList.contains('hidden'));
   }
 }
@@ -550,7 +555,9 @@ async function refreshTrackedStatus() {
   if (data.status !== t.status) {
     t.status = data.status;
     localStorage.setItem(TRACK_KEY, JSON.stringify(t));
-    if (data.status === 'delivered' && navigator.vibrate) navigator.vibrate([120, 60, 120]);
+    // buzz when the food actually leaves the kitchen — that's the news the
+    // guest is waiting for, not the staff's later "handed over" tap
+    if (data.status === 'on_the_way' && navigator.vibrate) navigator.vibrate([120, 60, 120]);
   }
   renderTracker(t.status);
   if (t.status === 'delivered' || t.status === 'cancelled') {
