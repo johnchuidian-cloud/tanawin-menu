@@ -359,8 +359,12 @@ function discountForm(o, openBtn) {
   wrap.innerHTML = `
     <div class="discount-hint">Ask to see the Senior Citizen / PWD ID first. 20% off the eligible diners' share of the bill.</div>
     <div class="discount-inputs">
-      <label>Diners <input type="number" class="disc-diners" min="1" step="1" inputmode="numeric" value="${o.discount_diners || 1}"></label>
-      <label>Senior/PWD <input type="number" class="disc-eligible" min="1" step="1" inputmode="numeric" value="${o.discount_eligible || 1}"></label>
+      <!-- start EMPTY: pre-filled 1s read as "already correct" and got applied
+           unchanged, silently discounting a table of one -->
+      <label>Diners <input type="number" class="disc-diners" min="1" step="1" inputmode="numeric"
+             placeholder="0" value="${o.discount_diners ?? ''}"></label>
+      <label>Senior/PWD <input type="number" class="disc-eligible" min="1" step="1" inputmode="numeric"
+             placeholder="0" value="${o.discount_eligible ?? ''}"></label>
     </div>
     <div class="discount-preview"></div>
     <div class="order-actions">
