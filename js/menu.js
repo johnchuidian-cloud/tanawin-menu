@@ -53,8 +53,13 @@ function itemQtyTotal(id) {
 
 async function loadMenu() {
   const [menuRes, catRes] = await Promise.all([
+    // Filter explicitly rather than leaning on RLS: anon only ever gets
+    // available rows, but an authenticated staff session may read ALL of them,
+    // which would leak hidden items into the guest page — and make the
+    // "exactly what guests see" preview a lie.
     db.from('menu_items')
       .select('id, name, category, description, image_url, price, sort_order, options')
+      .eq('is_available', true)
       .order('sort_order')
       .order('name'),
     db.from('categories').select('name, sort_order').order('sort_order'),
@@ -612,4 +617,29 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.add('hidden'), 3500);
 }
 
+// ── Admin preview ───────────────────────────────────────────────────
+// Staff open this page from the dashboard's "👁 Guest view" chip. Nothing
+// about the guest experience changes — the only addition is a banner back
+// to the dashboard, so staff aren't stranded with just the URL bar.
+//
+// The flag alone does nothing: it needs a signed-in staff session, which
+// index.html can see because staff.html stores it in localStorage on the
+// same origin. Guests have no session, so ?preview=1 is inert for them.
+// (Reusing the existing `db` client on purpose — a second createClient on
+// one page clobbers the shared session.)
+async function showPreviewBannerIfStaff() {
+  if (new URLSearchParams(location.search).get('preview') !== '1') return;
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) return;
+  const bar = document.createElement('div');
+  bar.className = 'preview-bar';
+  bar.innerHTML = `<strong>👁 Admin preview</strong>
+    <span>this is exactly what guests see</span>
+    <a href="staff.html">← Back to dashboard</a>`;
+  document.body.appendChild(bar);
+  // keep the cart bar and banner clear of the fixed strip
+  document.body.style.paddingBottom = `${bar.offsetHeight + 8}px`;
+}
+
 loadMenu();
+showPreviewBannerIfStaff();
