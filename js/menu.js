@@ -313,6 +313,23 @@ $('locOptions').addEventListener('change', () => {
     : 'Any allergies, serve time preference, or other requests?';
 });
 
+// Concierge deep-links here as /?code=<6 digits> so the guest never retypes
+// theirs. The link MUST beat any code saved on the device: shared and staff
+// phones carry a stale one, which is exactly how Lexi ended up with the
+// Dining Area code while actually in Glamping Tent 1. Format check only —
+// place_order re-resolves the code server-side, so a bad one just fails there
+// like a mistyped code. The param is stripped either way, so codes don't
+// linger in the address bar, screenshots or share sheets.
+(() => {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('code')) return;
+  const incoming = (params.get('code') || '').trim();
+  if (/^\d{6}$/.test(incoming)) localStorage.setItem('tanawin-room-code', incoming);
+  params.delete('code');
+  const rest = params.toString();
+  history.replaceState({}, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+})();
+
 // Returning guests keep their code for the whole stay.
 $('accessCode').value = localStorage.getItem('tanawin-room-code') || '';
 $('accessCode').addEventListener('input', e => {
@@ -397,7 +414,7 @@ $('placeOrderBtn').onclick = async () => {
   const choice = document.querySelector('input[name="loc"]:checked')?.value;
   const code = $('accessCode').value.trim();
   if (!choice) {
-    toast('Please choose: to your room, or dining in?');
+    toast('Please choose: to your room, or the third-floor dining area?');
     return;
   }
   if (!/^\d{6}$/.test(code)) {
