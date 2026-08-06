@@ -9,7 +9,9 @@ const $ = id => document.getElementById(id);
 
 const state = {
   orders: new Map(),      // id -> order row (with items)
+  requests: new Map(),    // id -> concierge_requests row (guest service requests)
   filter: 'active',
+  kind: 'all',            // feed narrowing: all | order | request
   menu: [],
   categories: CATEGORIES, // replaced by the categories table on load
   editingId: null,        // menu item being edited (null = new)
@@ -61,7 +63,7 @@ async function showApp(user) {
     : 'https://tanawin-hub.tanawinbnb.workers.dev/staff';
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
-  const tasks = [loadOrders(), loadMenu(), loadRooms(), loadSettings()];
+  const tasks = [loadOrders(), loadRequests(), loadMenu(), loadRooms(), loadSettings()];
   if (isAdmin) tasks.push(loadStaff());
   await Promise.all(tasks);
   subscribeOrders();
@@ -163,6 +165,20 @@ async function loadOrders() {
   renderOrders();
 }
 
+// Guest service requests from the Concierge app (shared table, suite
+// connection #7). They ride the SAME feed as food orders.
+async function loadRequests() {
+  const { data, error } = await db
+    .from('concierge_requests')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) { console.error('could not load guest requests', error); return; }
+  state.requests.clear();
+  data.forEach(r => state.requests.set(r.id, r));
+  renderOrders();
+}
+
 function subscribeOrders() {
   if (state.channel) db.removeChannel(state.channel);
   state.channel = db.channel('orders-live')
@@ -189,38 +205,79 @@ function subscribeOrders() {
         renderOrders();
       }
     })
+    // A guest request should land as loudly as a food order.
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'concierge_requests' }, payload => {
+      state.requests.set(payload.new.id, payload.new);
+      renderOrders();
+      chime();
+      startNagging();
+      showRequestNotification(payload.new);
+      toast(`New request — ${REQUEST_KINDS[payload.new.kind]?.label || 'guest request'} · ${payload.new.room_name}`);
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'concierge_requests' }, payload => {
+      // another device acted on it — keep every dashboard in step
+      state.requests.set(payload.new.id, { ...state.requests.get(payload.new.id), ...payload.new });
+      renderOrders();
+    })
     .subscribe();
 }
 
-document.querySelectorAll('.filter-row .cat-pill').forEach(pill => {
+// Scoped by data-attribute, NOT by ".filter-row .cat-pill" — that would also
+// grab the type pills and the Excel toggle sitting in the same rows.
+document.querySelectorAll('.cat-pill[data-filter]').forEach(pill => {
   pill.onclick = () => {
     state.filter = pill.dataset.filter;
-    document.querySelectorAll('.filter-row .cat-pill').forEach(p =>
+    document.querySelectorAll('.cat-pill[data-filter]').forEach(p =>
       p.classList.toggle('active', p === pill));
     renderOrders();
   };
 });
 
+document.querySelectorAll('.cat-pill[data-kind]').forEach(pill => {
+  pill.onclick = () => {
+    state.kind = pill.dataset.kind;
+    document.querySelectorAll('.cat-pill[data-kind]').forEach(p =>
+      p.classList.toggle('active', p === pill));
+    renderOrders();
+  };
+});
+
+// an order isn't finished until it's actually been handed over
+const ORDER_ACTIVE = ['new', 'preparing', 'on_the_way'];
+// a request is live until someone finishes or bins it
+const REQUEST_ACTIVE = ['new', 'acknowledged'];
+
+const isOrderActive = o => ORDER_ACTIVE.includes(o.status);
+const isRequestActive = r => REQUEST_ACTIVE.includes(r.status);
+
+// Food and guest requests share one chronological feed.
+function feedEntries() {
+  return [
+    ...[...state.orders.values()].map(o => ({ type: 'order', at: o.created_at, row: o, live: isOrderActive(o) })),
+    ...[...state.requests.values()].map(r => ({ type: 'request', at: r.created_at, row: r, live: isRequestActive(r) })),
+  ].sort((a, b) => new Date(b.at) - new Date(a.at));
+}
+
 function renderOrders() {
   const list = $('ordersList');
-  // an order isn't finished until it's actually been handed over
-  const active = ['new', 'preparing', 'on_the_way'];
-  const rows = [...state.orders.values()]
-    .filter(o => state.filter === 'active' ? active.includes(o.status) : !active.includes(o.status))
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const all = feedEntries();
+  const rows = all
+    .filter(e => state.filter === 'active' ? e.live : !e.live)
+    .filter(e => state.kind === 'all' || e.kind === state.kind || e.type === state.kind);
 
-  const activeCount = [...state.orders.values()].filter(o => active.includes(o.status)).length;
+  const activeCount = all.filter(e => e.live).length;
   $('activeBadge').textContent = activeCount;
   $('activeBadge').classList.toggle('hidden', activeCount === 0);
   syncAlertState();
 
   list.innerHTML = '';
   if (!rows.length) {
+    const what = state.kind === 'order' ? 'food orders' : state.kind === 'request' ? 'guest requests' : 'orders or requests';
     list.innerHTML = `<p class="empty-note">${state.filter === 'active'
-      ? 'No active orders — new ones appear here instantly.' : 'Nothing here yet.'}</p>`;
+      ? `No active ${what} — new ones appear here instantly.` : 'Nothing here yet.'}</p>`;
     return;
   }
-  rows.forEach(o => list.appendChild(orderCard(o)));
+  rows.forEach(e => list.appendChild(e.type === 'order' ? orderCard(e.row) : requestCard(e.row)));
 }
 
 function orderCard(o) {
@@ -308,6 +365,110 @@ function orderCard(o) {
     actions.appendChild(actionBtn('Uncancel — back to queue', () => setStatus(o.id, 'new')));
   }
   return card;
+}
+
+// ── Guest requests (from the Concierge app) ─────────────────────────
+// Deliberately plain words, not the food lifecycle — a towel is never
+// "preparing". Staff acknowledge it, then mark it done.
+
+const REQUEST_KINDS = {
+  towel_change: { label: 'Towel change', icon: '🧺' },
+  bin_clearing: { label: 'Bin clearing', icon: '🗑' },
+  room_items:   { label: 'Room items',   icon: '🧴' },
+  problem:      { label: 'Problem report', icon: '🛠' },
+};
+
+function requestCard(r) {
+  const card = document.createElement('article');
+  card.className = `order-card request-card status-${r.status}`;
+  const kind = REQUEST_KINDS[r.kind] || { label: r.kind, icon: '🛎' };
+
+  const items = Array.isArray(r.items) && r.items.length
+    ? `<ul class="order-items">${r.items.map(i => `
+        <li><span>${esc(i.label || 'Item')} × ${Number(i.qty) || 1}${
+          i.note ? `<small class="item-note">${esc(i.note)}</small>` : ''}</span></li>`).join('')}</ul>`
+    : '';
+
+  const stateChip = r.status === 'acknowledged'
+    ? `<span class="chip status-chip-otw">Acknowledged${r.acknowledged_by ? ' by ' + esc(r.acknowledged_by) : ''}</span>`
+    : r.status === 'done'
+      ? `<span class="chip status-chip-delivered">Done${r.acknowledged_by ? ' by ' + esc(r.acknowledged_by) : ''}</span>`
+      : r.status === 'cancelled'
+        ? '<span class="chip status-chip-cancelled">Cancelled</span>' : '';
+
+  card.innerHTML = `
+    <div class="order-top">
+      <span class="order-num">${kind.icon} ${esc(kind.label)}</span>
+      <span class="order-time">${timeLabel(r.created_at)}</span>
+    </div>
+    <div class="order-chips">
+      <span class="chip room-chip">${esc(r.room_name || 'Unknown room')}</span>
+      <span class="chip request-chip">Guest request</span>
+      ${r.out_of_hours ? '<span class="chip chip-night" title="Sent outside service hours">🌙 Overnight</span>' : ''}
+      ${r.escalated_at ? '<span class="chip chip-escalated">⚠ Escalated</span>' : ''}
+      ${stateChip}
+    </div>
+    ${items}
+    ${r.note ? `<div class="order-note">📝 ${esc(r.note)}</div>` : ''}
+    <div class="request-photo"></div>
+    <div class="order-actions"></div>`;
+
+  if (r.photo_data) {
+    // a data URL straight from the guest's phone — never inject it as markup
+    const img = document.createElement('img');
+    img.className = 'request-thumb';
+    img.src = r.photo_data;
+    img.alt = 'Photo from the guest';
+    img.onclick = () => img.classList.toggle('zoomed');
+    card.querySelector('.request-photo').appendChild(img);
+  }
+
+  const actions = card.querySelector('.order-actions');
+  if (r.status === 'new') {
+    actions.appendChild(actionBtn('Got it — on it 👍', () => setRequestStatus(r.id, 'acknowledged')));
+    actions.appendChild(requestCancelBtn(r.id));
+  } else if (r.status === 'acknowledged') {
+    actions.appendChild(actionBtn('Finished ✓', () => setRequestStatus(r.id, 'done')));
+    actions.appendChild(requestCancelBtn(r.id));
+  } else if (r.status === 'cancelled') {
+    actions.appendChild(actionBtn('Put back in the queue', () => setRequestStatus(r.id, 'new')));
+  }
+  return card;
+}
+
+function requestCancelBtn(id) {
+  const b = document.createElement('button');
+  b.className = 'btn-secondary';
+  b.textContent = 'Cancel';
+  b.onclick = () => { if (confirm('Cancel this guest request?')) setRequestStatus(id, 'cancelled'); };
+  return b;
+}
+
+async function setRequestStatus(id, status) {
+  const patch = { status };
+  const now = new Date().toISOString();
+  if (status === 'acknowledged') { patch.acknowledged_at = now; patch.acknowledged_by = currentName; }
+  if (status === 'done') {
+    patch.done_at = now;
+    // acknowledging is skippable in a rush — stamp it so the record isn't half-empty
+    const r = state.requests.get(id);
+    if (r && !r.acknowledged_at) { patch.acknowledged_at = now; patch.acknowledged_by = currentName; }
+  }
+  if (status === 'new') { patch.acknowledged_at = null; patch.acknowledged_by = null; patch.done_at = null; }
+  // .select() so we can see how many rows actually changed. This table's RLS
+  // requires an ACTIVE staff row, and a blocked update returns success with
+  // zero rows — without this the card would show "Done" while the request
+  // stayed open in the database and on everyone else's dashboard.
+  const { data, error } = await db.from('concierge_requests')
+    .update(patch).eq('id', id).select('id');
+  if (error) { toast('Update failed — try again.'); console.error(error); return; }
+  if (!data?.length) {
+    toast('Could not update that — your login may no longer be active. Sign out and back in.');
+    console.error('concierge_requests update affected 0 rows (RLS?)', { id, patch });
+    return;
+  }
+  const r = state.requests.get(id);
+  if (r) { Object.assign(r, patch); renderOrders(); }
 }
 
 function actionBtn(label, fn) {
@@ -1124,6 +1285,18 @@ async function showOrderNotification(o) {
   } catch (err) { console.warn('notification failed', err); }
 }
 
+async function showRequestNotification(r) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const kind = REQUEST_KINDS[r.kind] || { label: 'Guest request', icon: '🛎' };
+  const opts = { body: `${r.room_name || 'Guest'}${r.out_of_hours ? ' · overnight' : ''}`,
+                 icon: 'assets/icon-192.png', badge: 'assets/icon-192.png',
+                 tag: `request-${r.id}`, renotify: true };
+  try {
+    if (swReg?.showNotification) await swReg.showNotification(`${kind.icon} ${kind.label}`, opts);
+    else new Notification(`${kind.icon} ${kind.label}`, opts);
+  } catch (err) { console.warn('notification failed', err); }
+}
+
 async function acquireWake() {
   if (!('wakeLock' in navigator) || wakeSentinel || document.visibilityState !== 'visible') return;
   try {
@@ -1150,7 +1323,10 @@ function startNagging() {
 
 function stopNagging() { clearInterval(nagTimer); nagTimer = null; }
 
-const waitingCount = () => [...state.orders.values()].filter(o => o.status === 'new').length;
+// unacknowledged work of either kind — what the nag and tab title count
+const waitingCount = () =>
+  [...state.orders.values()].filter(o => o.status === 'new').length +
+  [...state.requests.values()].filter(r => r.status === 'new').length;
 
 // Unacknowledged count rides in the tab title so a backgrounded dashboard
 // still shows something.

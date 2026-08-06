@@ -76,6 +76,13 @@
         <button class="cat-pill" data-filter="done">Done</button>
         <button class="cat-pill export-toggle" id="exportToggle">⬇ Excel</button>
       </div>
+      <!-- Food and guest requests share ONE chronological feed (Lexi: separate
+           tabs get ignored); this only narrows what that feed shows. -->
+      <div class="filter-row type-row">
+        <button class="cat-pill small active" data-kind="all">Everything</button>
+        <button class="cat-pill small" data-kind="order">🍽 Food</button>
+        <button class="cat-pill small" data-kind="request">🛎 Requests</button>
+      </div>
       <div class="settings-card hidden" id="exportPanel">
         <span class="field-label">Download orders as a spreadsheet</span>
         <div class="export-dates">

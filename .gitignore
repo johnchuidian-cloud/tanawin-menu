@@ -1,4 +1,6 @@
 .env.local
+.env.local.bak
+.env*.bak
 .env
 node_modules/
 staff-login.txt
