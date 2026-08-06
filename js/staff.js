@@ -1163,6 +1163,44 @@ const pushSupported = () =>
 
 async function refreshPushState() {
   pushSub = swReg ? await swReg.pushManager.getSubscription() : null;
+  if (pushSub && !subscribedWithCurrentKey(pushSub)) await healStalePushSubscription();
+}
+
+// A subscription is bound to the VAPID key it was created with. If that key is
+// ever replaced, the old subscription keeps LOOKING fine on the device but the
+// push service rejects every send (403 — which isn't a 404/410, so the sender
+// never prunes it either). Rather than making staff notice and re-enable it,
+// swap it for a fresh one the next time they open the dashboard.
+function subscribedWithCurrentKey(sub) {
+  const stored = sub.options?.applicationServerKey;
+  if (!stored) return true;                    // can't tell — leave it alone
+  const a = new Uint8Array(stored);
+  const b = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+async function healStalePushSubscription() {
+  try {
+    const dead = pushSub.endpoint;
+    await pushSub.unsubscribe();
+    pushSub = null;
+    await db.from('push_subscriptions').delete().eq('endpoint', dead);
+    if (Notification.permission !== 'granted') return;   // they'd have to re-allow
+    const sub = await withTimeout(swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    }), 20000, 'subscribe');
+    const json = sub.toJSON();
+    const { error } = await db.from('push_subscriptions').upsert({
+      endpoint: sub.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth,
+      auth_uid: currentAuthId, staff_name: currentName,
+    }, { onConflict: 'endpoint' });
+    if (error) { await sub.unsubscribe(); throw error; }
+    pushSub = sub;
+    console.log('push subscription re-issued against the current VAPID key');
+  } catch (err) {
+    console.warn('could not re-issue push subscription', err);
+  }
 }
 
 function renderPushChip() {

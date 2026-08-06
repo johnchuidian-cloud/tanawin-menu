@@ -8,7 +8,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Web push: the VAPID *public* key is meant to ship in the client — it only
 // lets this site's service worker subscribe. The private half is a function
 // secret on Supabase (order-push signs with it).
-const VAPID_PUBLIC_KEY = 'BED5rzbHGdM5k4HX2p-7Ws5pH2Nn1OgKIXzYq0Lh-28fXSnLREomMPSgn7hgtvcTNKwA_0Hx9F_oqRycTOwVWAA';
+const VAPID_PUBLIC_KEY = 'BOiX5n6GYvY7DKODdvMhCbYQiBYyDpyN1pVOjUZpSd-kgXfQP928j4FcjYEVmAnYD9c62EhW_aNzW5vaOaTpVEE';
 
 // GCash QR lives as a public asset in menu-images (handoff §8 decision);
 // the checkout hides the GCash panel if this image doesn't exist yet.
