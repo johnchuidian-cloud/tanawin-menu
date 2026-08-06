@@ -322,10 +322,14 @@ $('locOptions').addEventListener('change', () => {
 // linger in the address bar, screenshots or share sheets.
 (() => {
   const params = new URLSearchParams(location.search);
-  if (!params.has('code')) return;
+  if (!params.has('code') && !params.has('from')) return;
   const incoming = (params.get('code') || '').trim();
   if (/^\d{6}$/.test(incoming)) localStorage.setItem('tanawin-room-code', incoming);
+  // Remember the referral for THIS tab only — sessionStorage, so a shared
+  // phone doesn't sprout a "back to Concierge" bar days later.
+  if (params.get('from') === 'concierge') sessionStorage.setItem('tanawin-from-concierge', '1');
   params.delete('code');
+  params.delete('from');
   const rest = params.toString();
   history.replaceState({}, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
 })();
@@ -658,5 +662,28 @@ async function showPreviewBannerIfStaff() {
   document.body.style.paddingBottom = `${bar.offsetHeight + 8}px`;
 }
 
+// ── Back to Concierge ───────────────────────────────────────────────
+// Only for guests who arrived via Concierge's "Hungry? Order food" card
+// (?from=concierge). A QR-poster or bookmark visitor has never seen
+// Concierge, so offering them a way "back" would point at a door they've
+// never walked through — they must never see this.
+//
+// Sticky at the top rather than fixed at the bottom: the bottom already
+// carries the cart bar, the order-status banner, toasts and the sheets.
+// Concierge remembers the guest's code itself, so a bare link is enough.
+const CONCIERGE_URL = 'https://tanawin-concierge.tanawinbnb.workers.dev/';
+
+function showConciergeBarIfReferred() {
+  if (sessionStorage.getItem('tanawin-from-concierge') !== '1') return;
+  const bar = document.createElement('a');
+  bar.className = 'concierge-bar';
+  bar.href = CONCIERGE_URL;
+  bar.innerHTML = '← Back to Tanawin Concierge<span>Wifi, house info, and guest services</span>';
+  document.body.insertBefore(bar, document.body.firstChild);
+  // the category nav sticks BELOW this bar instead of under it
+  document.documentElement.style.setProperty('--concierge-bar-h', `${bar.offsetHeight}px`);
+}
+
 loadMenu();
 showPreviewBannerIfStaff();
+showConciergeBarIfReferred();
