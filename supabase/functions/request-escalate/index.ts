@@ -13,6 +13,33 @@ import webpush from 'npm:web-push@3.6.7';
 
 const STALE_MINUTES = 10;
 
+// Fallbacks only — the real values live in concierge_content/request_config so
+// Lexi can change the hours herself from the Concierge editor.
+const DEFAULT_HOURS = { open: '07:00', last_call_weekday: '18:00', last_call_weekend: '20:00' };
+
+// Manila wall-clock, since that's what "staff are back at 7" means to a guest.
+function manilaNow() {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Manila', weekday: 'short',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date()).map(p => [p.type, p.value]),
+  );
+  return { hhmm: `${parts.hour}:${parts.minute}`, weekday: parts.weekday };
+}
+
+// Are staff on shift right now? Zero-padded HH:MM compares correctly as text.
+function withinStaffHours(cfg: Record<string, string>) {
+  const { hhmm, weekday } = manilaNow();
+  const weekend = weekday === 'Sat' || weekday === 'Sun';
+  const close = (weekend ? cfg.last_call_weekend : cfg.last_call_weekday)
+    ?? DEFAULT_HOURS.last_call_weekday;
+  const open = cfg.open ?? DEFAULT_HOURS.open;
+  // NOTE: must be bounded at BOTH ends. "past opening" alone is also true at
+  // 11pm, which is exactly the 3am alert this is meant to prevent.
+  return { on: hhmm >= open && hhmm < close, hhmm, open, close };
+}
+
 const KIND_LABEL: Record<string, string> = {
   towel_change: 'Towel change',
   bin_clearing: 'Bin clearing',
@@ -31,8 +58,8 @@ Deno.serve(async (req) => {
   );
 
   const cutoff = new Date(Date.now() - STALE_MINUTES * 60_000).toISOString();
-  const { data: stale, error } = await db.from('concierge_requests')
-    .select('id, kind, room_name, created_at')
+  const { data: rows, error } = await db.from('concierge_requests')
+    .select('id, kind, room_name, created_at, out_of_hours')
     .eq('status', 'new')
     .is('acknowledged_at', null)
     .is('escalated_at', null)
@@ -42,7 +69,24 @@ Deno.serve(async (req) => {
     console.error('escalation query failed', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
-  if (!stale?.length) return Response.json({ escalated: 0 });
+  if (!rows?.length) return Response.json({ escalated: 0 });
+
+  // A guest who requests at 11pm is told staff resume at 7am. Escalating that
+  // 10 minutes later would wake the whole team for something the guest was
+  // promised would wait — so overnight requests hold until staff are back on,
+  // and then escalate normally (an unacked towel from 2am nudges the morning
+  // shift at ~07:10). Requests made DURING hours are unaffected.
+  const { data: cfgRow } = await db.from('concierge_content')
+    .select('value').eq('key', 'request_config').maybeSingle();
+  const cfg = { ...DEFAULT_HOURS, ...(cfgRow?.value ?? {}) } as Record<string, string>;
+  const shift = withinStaffHours(cfg);
+
+  const stale = rows.filter(r => !r.out_of_hours || shift.on);
+  const deferred = rows.length - stale.length;
+  if (deferred) {
+    console.log(`holding ${deferred} overnight request(s) — Manila ${shift.hhmm}, staff hours ${shift.open}-${shift.close}`);
+  }
+  if (!stale.length) return Response.json({ escalated: 0, deferred });
 
   const pub = Deno.env.get('VAPID_PUBLIC_KEY');
   const priv = Deno.env.get('VAPID_PRIVATE_KEY');
@@ -84,5 +128,5 @@ Deno.serve(async (req) => {
     .update({ escalated_at: new Date().toISOString() }).in('id', ids);
 
   console.log(`escalated ${ids.length} request(s) to ${subs?.length ?? 0} device(s)`);
-  return Response.json({ escalated: ids.length, devices: subs?.length ?? 0 });
+  return Response.json({ escalated: ids.length, deferred, devices: subs?.length ?? 0 });
 });
