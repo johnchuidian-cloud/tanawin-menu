@@ -582,6 +582,17 @@ async function saveDiscount(id, patch) {
   toast(patch.discount_amount ? `Discount applied: −${peso(patch.discount_amount)}` : 'Discount removed.');
 }
 
+// Lexi reads this spreadsheet — raw `on_the_way` with an underscore doesn't
+// belong in it. ("Sent out by" rather than "Ready by" for the same reason:
+// handled_by is stamped when the order LEAVES the kitchen, not when it's cooked.)
+const STATUS_LABEL = {
+  new: 'New',
+  preparing: 'Being prepped',
+  on_the_way: 'On the way',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
+
 // ── Excel export ────────────────────────────────────────────────────
 // SheetJS loads lazily from the CDN only when someone actually exports.
 
@@ -635,13 +646,13 @@ $('exportBtn').onclick = async () => {
     const ordersSheet = data.map(o => { const { date, time } = dt(o.created_at); return {
       'Order #': Number(o.order_number), 'Date': date, 'Time': time,
       'Room': o.is_dining_in ? 'Dining in' : (o.room_number || ''),
-      'Status': o.status, 'Payment': o.payment_intent,
+      'Status': STATUS_LABEL[o.status] || o.status, 'Payment': o.payment_intent,
       'Total (PHP)': Number(o.total),
       'Diners': o.discount_diners ?? '', 'Senior/PWD': o.discount_eligible ?? '',
       'Senior/PWD discount (PHP)': Number(o.discount_amount) || 0,
       'Amount due (PHP)': Number(o.total) - (Number(o.discount_amount) || 0),
       'Items': (o.order_items || []).map(i => `${i.item_name} x${i.qty}`).join('; '),
-      'Note': o.note || '', 'Ready by': o.handled_by || '', 'Cancelled by': o.cancelled_by || '',
+      'Note': o.note || '', 'Sent out by': o.handled_by || '', 'Cancelled by': o.cancelled_by || '',
       'Discount by': o.discount_by || '',
     }; });
     const linesSheet = data.flatMap(o => (o.order_items || []).map(i => ({

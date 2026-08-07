@@ -58,35 +58,61 @@ Deno.serve(async (req) => {
   );
 
   const cutoff = new Date(Date.now() - STALE_MINUTES * 60_000).toISOString();
-  const { data: rows, error } = await db.from('concierge_requests')
-    .select('id, kind, room_name, created_at, out_of_hours')
-    .eq('status', 'new')
-    .is('acknowledged_at', null)
-    .is('escalated_at', null)
-    .lt('created_at', cutoff);
-
-  if (error) {
-    console.error('escalation query failed', error);
-    return Response.json({ error: error.message }, { status: 500 });
-  }
-  if (!rows?.length) return Response.json({ escalated: 0 });
 
   // A guest who requests at 11pm is told staff resume at 7am. Escalating that
   // 10 minutes later would wake the whole team for something the guest was
-  // promised would wait — so overnight requests hold until staff are back on,
-  // and then escalate normally (an unacked towel from 2am nudges the morning
-  // shift at ~07:10). Requests made DURING hours are unaffected.
+  // promised would wait — so overnight work holds until staff are back on, and
+  // then escalates normally (an unacked towel from 2am nudges the morning
+  // shift at ~07:10). Anything raised DURING hours is unaffected.
   const { data: cfgRow } = await db.from('concierge_content')
     .select('value').eq('key', 'request_config').maybeSingle();
   const cfg = { ...DEFAULT_HOURS, ...(cfgRow?.value ?? {}) } as Record<string, string>;
   const shift = withinStaffHours(cfg);
 
-  const stale = rows.filter(r => !r.out_of_hours || shift.on);
-  const deferred = rows.length - stale.length;
-  if (deferred) {
-    console.log(`holding ${deferred} overnight request(s) — Manila ${shift.hhmm}, staff hours ${shift.open}-${shift.close}`);
+  const [reqRes, ordRes] = await Promise.all([
+    db.from('concierge_requests')
+      .select('id, kind, room_name, created_at, out_of_hours')
+      .eq('status', 'new').is('acknowledged_at', null).is('escalated_at', null)
+      .lt('created_at', cutoff),
+    // Food orders escalate too: 'new' means nobody has tapped "Start prepping".
+    // Orders carry no out_of_hours flag (nothing stops a guest ordering at 2am),
+    // so the shift window is the only guard they get.
+    db.from('orders')
+      .select('id, order_number, room_number, is_dining_in, total, created_at')
+      .eq('status', 'new').is('escalated_at', null)
+      .lt('created_at', cutoff),
+  ]);
+
+  if (reqRes.error || ordRes.error) {
+    const msg = reqRes.error?.message ?? ordRes.error?.message;
+    console.error('escalation query failed', msg);
+    return Response.json({ error: msg }, { status: 500 });
   }
-  if (!stale.length) return Response.json({ escalated: 0, deferred });
+
+  const staleReqs = (reqRes.data ?? []).filter(r => !r.out_of_hours || shift.on);
+  const staleOrders = shift.on ? (ordRes.data ?? []) : [];
+  const deferred = ((reqRes.data?.length ?? 0) - staleReqs.length)
+    + ((ordRes.data?.length ?? 0) - staleOrders.length);
+  if (deferred) {
+    console.log(`holding ${deferred} overnight item(s) — Manila ${shift.hhmm}, staff hours ${shift.open}-${shift.close}`);
+  }
+
+  const mins = (at: string) => Math.round((Date.now() - new Date(at).getTime()) / 60_000);
+  const alerts = [
+    ...staleReqs.map(r => ({
+      table: 'concierge_requests', id: r.id,
+      title: `⚠ Still waiting: ${KIND_LABEL[r.kind] ?? 'guest request'}`,
+      body: `${r.room_name} — no one has picked this up in ${mins(r.created_at)} min.`,
+      tag: `escalate-${r.id}`,
+    })),
+    ...staleOrders.map(o => ({
+      table: 'orders', id: o.id,
+      title: `⚠ Order #${o.order_number} not started`,
+      body: `${o.is_dining_in ? 'Dining in' : o.room_number ?? 'Room ?'} · ₱${o.total} — waiting ${mins(o.created_at)} min.`,
+      tag: `escalate-order-${o.id}`,
+    })),
+  ];
+  if (!alerts.length) return Response.json({ escalated: 0, deferred });
 
   const pub = Deno.env.get('VAPID_PUBLIC_KEY');
   const priv = Deno.env.get('VAPID_PRIVATE_KEY');
@@ -95,14 +121,8 @@ Deno.serve(async (req) => {
   if (pub && priv && subs?.length) {
     webpush.setVapidDetails('mailto:tanawinbnb@gmail.com', pub, priv);
     const gone: string[] = [];
-    for (const r of stale) {
-      const mins = Math.round((Date.now() - new Date(r.created_at).getTime()) / 60_000);
-      const payload = JSON.stringify({
-        title: `⚠ Still waiting: ${KIND_LABEL[r.kind] ?? 'guest request'}`,
-        body: `${r.room_name} — no one has picked this up in ${mins} min.`,
-        tag: `escalate-${r.id}`,
-        url: '/staff',
-      });
+    for (const a of alerts) {
+      const payload = JSON.stringify({ title: a.title, body: a.body, tag: a.tag, url: '/staff' });
       await Promise.all(subs.map(async (s) => {
         try {
           await webpush.sendNotification(
@@ -121,12 +141,20 @@ Deno.serve(async (req) => {
     console.log('no push subscriptions or VAPID keys — escalation recorded without alerting');
   }
 
-  // Stamp AFTER alerting, and only these ids, so a request can't be escalated
-  // twice and a push failure doesn't silently mark it handled.
-  const ids = stale.map(r => r.id);
-  await db.from('concierge_requests')
-    .update({ escalated_at: new Date().toISOString() }).in('id', ids);
+  // Stamp AFTER alerting, and only these ids, so nothing escalates twice and a
+  // push failure doesn't silently mark it handled.
+  const at = new Date().toISOString();
+  const byTable = (t: string) => alerts.filter(a => a.table === t).map(a => a.id);
+  const reqIds = byTable('concierge_requests');
+  const ordIds = byTable('orders');
+  await Promise.all([
+    reqIds.length ? db.from('concierge_requests').update({ escalated_at: at }).in('id', reqIds) : null,
+    ordIds.length ? db.from('orders').update({ escalated_at: at }).in('id', ordIds) : null,
+  ]);
 
-  console.log(`escalated ${ids.length} request(s) to ${subs?.length ?? 0} device(s)`);
-  return Response.json({ escalated: ids.length, deferred, devices: subs?.length ?? 0 });
+  console.log(`escalated ${reqIds.length} request(s) + ${ordIds.length} order(s) to ${subs?.length ?? 0} device(s)`);
+  return Response.json({
+    escalated: alerts.length, requests: reqIds.length, orders: ordIds.length,
+    deferred, devices: subs?.length ?? 0,
+  });
 });
