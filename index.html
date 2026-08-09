@@ -133,6 +133,9 @@
       <p class="tracker-hint">Keep this page open — it updates by itself.
         Not moving? Tap refresh.</p>
       <button class="btn-ghost tracker-refresh" id="trackerRefreshBtn">⟳ Refresh status</button>
+      <!-- Only offered while the order is still 'new'; once the kitchen starts,
+           cancelling is a conversation with staff. Shown/hidden by renderTracker. -->
+      <button class="btn-ghost cancel-order-btn hidden" id="cancelOrderBtn">Cancel my order</button>
       <button class="btn-primary" id="doneBtn">Back to menu</button>
     </div>
   </section>

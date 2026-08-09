@@ -185,6 +185,13 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Deliberately quiet: cancelling should be findable, not inviting. */
+.cancel-order-btn {
+  color: #A03A2A;
+  border-color: #e0b9b0;
+}
+.cancel-order-btn:disabled { opacity: 0.6; }
+
 /* ── Back-to-Concierge bar ──────────────────────────────
    Injected only for guests referred by Concierge. Sticky (not fixed) so it
    sits above the category nav in the same stacking flow; z-index clears

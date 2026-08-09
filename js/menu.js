@@ -562,6 +562,8 @@ function renderTracker(status) {
   });
   $('trackerHeading').textContent = STATUS_HEADLINE[status] || status;
   $('confirmStep').classList.toggle('is-ready', isFinalStep(status));
+  // cancelling is the guest's own only until the kitchen picks it up
+  $('cancelOrderBtn').classList.toggle('hidden', status !== 'new');
   // banner (only when the sheet is closed and the order is still in flight)
   const banner = $('orderBanner');
   if (status === 'cancelled') {
@@ -572,6 +574,39 @@ function renderTracker(status) {
     banner.classList.toggle('hidden', !$('cartSheet').classList.contains('hidden'));
   }
 }
+
+// The guest cancelling their own order. The server is the authority on whether
+// it's still allowed — a race with staff tapping "Start prepping" is entirely
+// possible, so a refusal is treated as information, not an error.
+$('cancelOrderBtn').onclick = async () => {
+  const t = trackedOrder();
+  if (!t) return;
+  if (!confirm('Cancel your order? This can only be undone by asking our staff.')) return;
+  const btn = $('cancelOrderBtn');
+  btn.disabled = true;
+  btn.textContent = 'Cancelling…';
+  try {
+    const { data, error } = await db.rpc('cancel_order', { p_order_id: t.order_id });
+    if (error) throw error;
+    if (data?.ok) {
+      t.status = 'cancelled';
+      localStorage.setItem(TRACK_KEY, JSON.stringify(t));
+      renderTracker('cancelled');
+      toast('Your order has been cancelled.');
+    } else if (data?.reason === 'already_started') {
+      renderTracker(data.status || 'preparing');
+      toast('Our kitchen has already started this one — please ask our staff.');
+    } else {
+      toast('We couldn’t cancel that — please ask our staff.');
+    }
+  } catch (err) {
+    console.error(err);
+    toast('Couldn’t reach us just now — check your connection, or ask our staff.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Cancel my order';
+  }
+};
 
 async function refreshTrackedStatus() {
   const t = trackedOrder();
