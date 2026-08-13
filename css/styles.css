@@ -185,6 +185,21 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* The opposite of the cancel button — this one should invite a tap, since a
+   guest sitting with dirty plates is the whole point of it. */
+.collect-btn {
+  color: var(--terracotta);
+  border-color: var(--terracotta-light);
+  font-weight: 800;
+}
+.collect-btn:disabled { opacity: 0.6; }
+.collect-done {
+  font-size: 14px;
+  color: var(--green);
+  font-weight: 700;
+  margin: 10px 0 2px;
+}
+
 /* Deliberately quiet: cancelling should be findable, not inviting. */
 .cancel-order-btn {
   color: #A03A2A;

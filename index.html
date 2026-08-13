@@ -136,6 +136,10 @@
       <!-- Only offered while the order is still 'new'; once the kitchen starts,
            cancelling is a conversation with staff. Shown/hidden by renderTracker. -->
       <button class="btn-ghost cancel-order-btn hidden" id="cancelOrderBtn">Cancel my order</button>
+      <!-- Appears once the food has been handed over, for room service only —
+           dining-room tables get cleared by staff anyway. -->
+      <button class="btn-ghost collect-btn hidden" id="collectPlatesBtn">🍽 Done with my food — please collect my plates</button>
+      <p class="collect-done hidden" id="collectDone">Thanks! Someone will come by to collect shortly. 🙏</p>
       <button class="btn-primary" id="doneBtn">Back to menu</button>
     </div>
   </section>

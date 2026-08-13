@@ -472,7 +472,10 @@ $('placeOrderBtn').onclick = async () => {
     $('confirmDetail').textContent = state.diningIn
       ? `${peso(data.total)} — we'll serve it at your table.`
       : `${peso(data.total)} — for ${data.room_number}.`;
-    startTracking({ order_id: data.order_id, order_number: data.order_number, status: 'new', ts: Date.now() });
+    // dining_in is remembered so the tracker knows whether to offer plate
+    // collection later — dining tables are cleared by staff anyway
+    startTracking({ order_id: data.order_id, order_number: data.order_number,
+                    status: 'new', dining_in: state.diningIn === true, ts: Date.now() });
     openSheet('confirmStep');
 
     state.cart.clear();
@@ -564,6 +567,10 @@ function renderTracker(status) {
   $('confirmStep').classList.toggle('is-ready', isFinalStep(status));
   // cancelling is the guest's own only until the kitchen picks it up
   $('cancelOrderBtn').classList.toggle('hidden', status !== 'new');
+  // plate collection: once the food is with them, and only for room service
+  const canCollect = status === 'delivered' && !t.dining_in && !t.plates_requested;
+  $('collectPlatesBtn').classList.toggle('hidden', !canCollect);
+  $('collectDone').classList.toggle('hidden', !(status === 'delivered' && t.plates_requested));
   // banner (only when the sheet is closed and the order is still in flight)
   const banner = $('orderBanner');
   if (status === 'cancelled') {
@@ -608,6 +615,38 @@ $('cancelOrderBtn').onclick = async () => {
   }
 };
 
+// "Done with my food — please collect my plates." The order's uuid is proof of
+// which room they are, so nothing is re-entered. The flag is remembered on the
+// device so the button doesn't reappear after a refresh; the server dedupes
+// anyway, in case they finish on a second phone.
+$('collectPlatesBtn').onclick = async () => {
+  const t = trackedOrder();
+  if (!t) return;
+  const btn = $('collectPlatesBtn');
+  btn.disabled = true;
+  btn.textContent = 'Letting them know…';
+  try {
+    const { data, error } = await db.rpc('request_plate_collection', { p_order_id: t.order_id });
+    if (error) throw error;
+    if (data?.ok) {
+      t.plates_requested = true;
+      localStorage.setItem(TRACK_KEY, JSON.stringify(t));
+      renderTracker(t.status);
+      toast('Thanks! Someone will come by to collect.');
+    } else if (data?.reason === 'not_delivered') {
+      toast('We’ll bring your food first — this appears once it has arrived.');
+    } else {
+      toast('Couldn’t send that — please ask our staff.');
+    }
+  } catch (err) {
+    console.error(err);
+    toast('Couldn’t reach us just now — check your connection, or ask our staff.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🍽 Done with my food — please collect my plates';
+  }
+};
+
 async function refreshTrackedStatus() {
   const t = trackedOrder();
   if (!t) return;
@@ -621,6 +660,15 @@ async function refreshTrackedStatus() {
     if (data.status === 'on_the_way' && navigator.vibrate) navigator.vibrate([120, 60, 120]);
   }
   renderTracker(t.status);
+  // Delivered food is NOT the end any more: the guest still has to eat before
+  // they can ask for the plates. Keep the tracker alive (no polling — the
+  // status can't change again) until either they've asked, or the 3h TTL in
+  // trackedOrder() retires it. Clearing at 10 min, as it used to, would have
+  // taken the button away mid-meal.
+  if (t.status === 'delivered' && !t.plates_requested && !t.dining_in) {
+    clearTimeout(trackTimer);
+    return;
+  }
   if (t.status === 'delivered' || t.status === 'cancelled') {
     // final state: keep it on screen ~10 min, then clear quietly
     if (Date.now() - t.ts > 10 * 60 * 1000) stopTracking();

@@ -376,6 +376,8 @@ const REQUEST_KINDS = {
   bin_clearing: { label: 'Bin clearing', icon: '🗑' },
   room_items:   { label: 'Room items',   icon: '🧴' },
   problem:      { label: 'Problem report', icon: '🛠' },
+  // raised from Menu's order tracker when a guest finishes eating in their room
+  plate_collection: { label: 'Plate collection', icon: '🍽' },
 };
 
 function requestCard(r) {
