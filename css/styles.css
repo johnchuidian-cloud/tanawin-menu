@@ -383,6 +383,26 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
   margin-bottom: 8px;
   display: block;
 }
+/* Only appears once "Dining area" is chosen — asking a room-service guest for
+   their table would just be a question with no answer. */
+.dining-details .field-label small {
+  display: block;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+.dining-details input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 16px;          /* 16px or iOS zooms the page on focus */
+  background: #fff;
+  color: var(--ink);
+}
 .code-input {
   width: 100%;
   border: 1px solid var(--line);

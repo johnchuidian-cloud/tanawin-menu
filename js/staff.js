@@ -280,6 +280,15 @@ function renderOrders() {
   rows.forEach(e => list.appendChild(e.type === 'order' ? orderCard(e.row) : requestCard(e.row)));
 }
 
+// Room service says which door. Dining in used to say only "Dining in", which
+// is the one case where staff have to actually find someone — so name the area
+// the code came from (access_room, stored since day one and never shown) and,
+// when the guest gave them, their name and table.
+function whereChip(o) {
+  if (!o.is_dining_in) return 'Room ' + esc(o.room_number || '?');
+  return o.access_room ? `Dining in · from ${esc(o.access_room)}` : 'Dining in';
+}
+
 function orderCard(o) {
   const card = document.createElement('article');
   card.className = `order-card status-${o.status}`;
@@ -308,7 +317,9 @@ function orderCard(o) {
       <span class="order-time">${timeLabel(o.created_at)}</span>
     </div>
     <div class="order-chips">
-      <span class="chip room-chip">${o.is_dining_in ? 'Dining in' : 'Room ' + esc(o.room_number || '?')}</span>
+      <span class="chip room-chip">${whereChip(o)}</span>
+      ${o.guest_name ? `<span class="chip who-chip">🙋 ${esc(o.guest_name)}</span>` : ''}
+      ${o.table_label ? `<span class="chip table-chip">Table ${esc(o.table_label)}</span>` : ''}
       ${payChip}${doneChip}
     </div>
     <ul class="order-items">${items}</ul>
@@ -364,8 +375,24 @@ function orderCard(o) {
     // accidental cancels happen — any staff can bring the order back
     actions.appendChild(actionBtn('Uncancel — back to queue', () => setStatus(o.id, 'new')));
   }
+  const back = ORDER_BACK[o.status];
+  if (back) actions.appendChild(backBtn(back.label, () => setStatus(o.id, back.to)));
   return card;
 }
+
+// Stepping back is for a mis-tap, so it's a quiet secondary action, never
+// beside the cancel button as an equal. The guest's tracker doesn't follow it
+// down — the DB holds a high-water mark (db/024).
+const ORDER_BACK = {
+  preparing:  { to: 'new',        label: '↩ Not started after all' },
+  on_the_way: { to: 'preparing',  label: '↩ Still in the kitchen' },
+  delivered:  { to: 'on_the_way', label: '↩ Not delivered yet' },
+};
+
+const REQUEST_BACK = {
+  acknowledged: { to: 'new',          label: '↩ Nobody has this' },
+  done:         { to: 'acknowledged', label: '↩ Not finished yet' },
+};
 
 // ── Guest requests (from the Concierge app) ─────────────────────────
 // Deliberately plain words, not the food lifecycle — a towel is never
@@ -435,6 +462,8 @@ function requestCard(r) {
   } else if (r.status === 'cancelled') {
     actions.appendChild(actionBtn('Put back in the queue', () => setRequestStatus(r.id, 'new')));
   }
+  const back = REQUEST_BACK[r.status];
+  if (back) actions.appendChild(backBtn(back.label, () => setRequestStatus(r.id, back.to)));
   return card;
 }
 
@@ -449,14 +478,23 @@ function requestCancelBtn(id) {
 async function setRequestStatus(id, status) {
   const patch = { status };
   const now = new Date().toISOString();
-  if (status === 'acknowledged') { patch.acknowledged_at = now; patch.acknowledged_by = currentName; }
+  // Don't re-stamp on the way back from 'done' — whoever picked it up still did.
+  if (status === 'acknowledged' && !state.requests.get(id)?.acknowledged_at) {
+    patch.acknowledged_at = now; patch.acknowledged_by = currentName;
+  }
   if (status === 'done') {
     patch.done_at = now;
     // acknowledging is skippable in a rush — stamp it so the record isn't half-empty
     const r = state.requests.get(id);
     if (r && !r.acknowledged_at) { patch.acknowledged_at = now; patch.acknowledged_by = currentName; }
   }
-  if (status === 'new') { patch.acknowledged_at = null; patch.acknowledged_by = null; patch.done_at = null; }
+  if (status === 'new') {
+    patch.acknowledged_at = null; patch.acknowledged_by = null; patch.done_at = null;
+    patch.escalated_at = null;   // genuinely back in the queue, so it can nag again
+  }
+  // Stepping 'done' back to 'acknowledged': drop the completion stamp but keep
+  // who picked it up, which is still true.
+  if (status === 'acknowledged' && state.requests.get(id)?.status === 'done') patch.done_at = null;
   // .select() so we can see how many rows actually changed. This table's RLS
   // requires an ACTIVE staff row, and a blocked update returns success with
   // zero rows — without this the card would show "Done" while the request
@@ -489,18 +527,36 @@ function cancelBtn(id) {
   return b;
 }
 
+function backBtn(label, fn) {
+  const b = document.createElement('button');
+  b.className = 'link-btn step-back';
+  b.type = 'button';
+  b.textContent = label;
+  b.onclick = fn;
+  return b;
+}
+
 async function setStatus(id, status) {
   const patch = { status };
+  const o = state.orders.get(id);
+  const goingBack = o && ORDER_RANK[status] < ORDER_RANK[o.status];
   // credit whoever carried it out; "Delivered ✓" is often tapped by the same
   // person moments later, so don't overwrite that with a later tapper
   if (status === 'on_the_way') patch.handled_by = currentName;
   if (status === 'cancelled') patch.cancelled_by = currentName;
   if (status === 'new') patch.cancelled_by = null; // uncancel wipes the blame
+  // Stepping back has to undo what the forward tap stamped, or the record
+  // keeps crediting someone for a delivery that didn't happen.
+  if (goingBack && status === 'preparing') patch.handled_by = null;
+  // Back in the unstarted queue means the escalation clock starts again —
+  // otherwise a re-queued order can never nag anyone a second time.
+  if (status === 'new') patch.escalated_at = null;
   const { error } = await db.from('orders').update(patch).eq('id', id);
   if (error) { toast('Update failed — try again.'); console.error(error); return; }
-  const o = state.orders.get(id);
   if (o) { Object.assign(o, patch); renderOrders(); }
 }
+
+const ORDER_RANK = { cancelled: 0, new: 1, preparing: 2, on_the_way: 3, delivered: 4 };
 
 // ── Senior/PWD discount (RA 9994 / RA 10754) ────────────────────────
 // Tanawin is not VAT-registered, so the legal computation is simply 20%
@@ -648,6 +704,10 @@ $('exportBtn').onclick = async () => {
     const ordersSheet = data.map(o => { const { date, time } = dt(o.created_at); return {
       'Order #': Number(o.order_number), 'Date': date, 'Time': time,
       'Room': o.is_dining_in ? 'Dining in' : (o.room_number || ''),
+      // Which room's code authorised it — the only trace a dining-in order
+      // leaves of who the guest actually was.
+      'Booked under': o.access_room || '',
+      'Guest name': o.guest_name || '', 'Table': o.table_label || '',
       'Status': STATUS_LABEL[o.status] || o.status, 'Payment': o.payment_intent,
       'Total (PHP)': Number(o.total),
       'Diners': o.discount_diners ?? '', 'Senior/PWD': o.discount_eligible ?? '',
@@ -1065,16 +1125,35 @@ $('saveQrTextBtn').onclick = async () => {
   toast('Poster text saved — reopen the poster to see it.');
 };
 
-$('settingsForm').onsubmit = async e => {
-  e.preventDefault();
-  const updates = [
-    { key: 'staff_sms_numbers', value: $('smsNumbers').value.trim() },
-    { key: 'sms_enabled', value: String($('smsEnabled').checked) },
-  ].map(r => ({ ...r, updated_at: new Date().toISOString() }));
-  const { error } = await db.from('settings').upsert(updates);
-  if (error) { toast('Save failed.'); console.error(error); return; }
-  toast('Settings saved.');
+// These save on change rather than behind a Save button. A switch that looks
+// flipped but hasn't been written is worse than no switch at all — you only
+// find out the next time an alert doesn't arrive.
+async function saveSetting(key, value) {
+  const { error } = await db.from('settings')
+    .upsert({ key, value, updated_at: new Date().toISOString() });
+  if (error) console.error(error);
+  return !error;
+}
+
+$('smsEnabled').onchange = async e => {
+  const on = e.target.checked;
+  e.target.disabled = true;
+  const ok = await saveSetting('sms_enabled', String(on));
+  e.target.disabled = false;
+  // Snap back on failure, so the switch never shows a state the DB doesn't hold.
+  if (!ok) { e.target.checked = !on; toast("Couldn't save that — check your connection."); return; }
+  toast(on ? 'SMS notifications on.' : 'SMS notifications off.');
 };
+
+// `change` on a text input fires on blur, not per keystroke — one write when
+// they're done typing.
+$('smsNumbers').onchange = async e => {
+  const ok = await saveSetting('staff_sms_numbers', e.target.value.trim());
+  toast(ok ? 'SMS numbers saved.' : "Couldn't save that — check your connection.");
+};
+
+// Enter in the numbers field would otherwise submit and reload the page.
+$('settingsForm').onsubmit = e => e.preventDefault();
 
 $('qrUpload').onchange = async () => {
   const f = $('qrUpload').files[0];

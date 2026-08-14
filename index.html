@@ -68,6 +68,21 @@
         </div>
       </fieldset>
 
+      <!-- Dining in only: a room number tells staff where to knock, a dining
+           room doesn't. Both optional — tables aren't numbered yet. -->
+      <div id="diningDetails" class="dining-details hidden">
+        <label class="field">
+          <span class="field-label">Your name <small>so we know who to look for</small></span>
+          <input type="text" id="guestName" maxlength="60" autocomplete="name"
+                 placeholder="Optional">
+        </label>
+        <label class="field">
+          <span class="field-label">Table <small>if your table has a number</small></span>
+          <input type="text" id="tableLabel" maxlength="20" autocomplete="off"
+                 placeholder="Optional">
+        </label>
+      </div>
+
       <label class="field">
         <span class="field-label">Access code</span>
         <!-- Codes are NOT handed out at check-in: they live in each room's ring

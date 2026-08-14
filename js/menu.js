@@ -308,9 +308,11 @@ $('doneBtn').onclick = () => closeSheet();
 $('locOptions').addEventListener('change', () => {
   const choice = document.querySelector('input[name="loc"]:checked')?.value;
   state.diningIn = choice === 'dining';
-  $('noteInput').placeholder = state.diningIn
-    ? 'Any allergies or requests? Tell us where you’re seated too.'
-    : 'Any allergies, serve time preference, or other requests?';
+  // "Tell us where you're seated" used to live in the note placeholder, where
+  // it was easy to skip and impossible to read back reliably. It's two real
+  // fields now, so the note goes back to being just the note.
+  $('diningDetails').classList.toggle('hidden', !state.diningIn);
+  $('noteInput').placeholder = 'Any allergies, serve time preference, or other requests?';
 });
 
 // Concierge deep-links here as /?code=<6 digits> so the guest never retypes
@@ -464,6 +466,9 @@ $('placeOrderBtn').onclick = async () => {
       p_gcash_proof_url: proofUrl,
       p_items: items,
       p_signature_url: signaturePath,
+      // Only meaningful for dining in; a room order already says where to go.
+      p_guest_name: state.diningIn ? ($('guestName').value.trim() || null) : null,
+      p_table_label: state.diningIn ? ($('tableLabel').value.trim() || null) : null,
     });
     if (error) throw error;
 
@@ -484,6 +489,7 @@ $('placeOrderBtn').onclick = async () => {
     $('proofInput').value = '';
     $('proofLabelText').textContent = 'Attach payment screenshot';
     $('noteInput').value = '';
+    $('tableLabel').value = '';   // the name can stay — same guest, same stay
     saveCart();
     updateCartBar();
     document.querySelectorAll('.item-card').forEach(c => renderItemActions(c, c.dataset.id));
