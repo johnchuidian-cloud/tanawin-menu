@@ -74,6 +74,7 @@
       <div class="filter-row">
         <button class="cat-pill active" data-filter="active">Active</button>
         <button class="cat-pill" data-filter="done">Done</button>
+        <button class="cat-pill export-toggle" id="paperToggle">✍ Paper order</button>
         <button class="cat-pill export-toggle" id="exportToggle">⬇ Excel</button>
       </div>
       <!-- Food and guest requests share ONE chronological feed (Lexi: separate
@@ -93,6 +94,86 @@
         </div>
         <button class="btn-primary" type="button" id="exportBtn">Download .xlsx</button>
       </div>
+
+      <!-- Orders taken by hand. Sits inline on the Orders tab rather than in a
+           modal sheet: entering a big tab is a long job and staff need to keep
+           checking the paper, so it must survive scrolling and interruption. -->
+      <div class="settings-card hidden" id="paperPanel">
+        <span class="field-label">Record an order taken on paper</span>
+
+        <fieldset class="field">
+          <legend>Has it already been served?</legend>
+          <div class="pay-options" id="paperServed">
+            <label><input type="radio" name="served" value="no" checked>
+              <span><strong>No — send it to the kitchen</strong><small>Joins the queue as a new order</small></span></label>
+            <label><input type="radio" name="served" value="yes">
+              <span><strong>Yes — just record it</strong><small>Goes straight in as delivered</small></span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>Where?</legend>
+          <div class="pay-options" id="paperLoc">
+            <label><input type="radio" name="ploc" value="dining" checked>
+              <span><strong>Dining area</strong><small>Eating in</small></span></label>
+            <label><input type="radio" name="ploc" value="room">
+              <span><strong>To a room</strong><small>Room service</small></span></label>
+          </div>
+        </fieldset>
+
+        <label class="field hidden" id="paperRoomField"><span class="field-label">Which room</span>
+          <select id="paperRoom"></select></label>
+
+        <div class="paper-two-up">
+          <label class="field"><span class="field-label">Guest name</span>
+            <input type="text" id="paperGuestName" maxlength="60" placeholder="Optional"></label>
+          <label class="field"><span class="field-label">Table</span>
+            <input type="text" id="paperTable" maxlength="20" placeholder="Optional"></label>
+        </div>
+
+        <span class="field-label">Items</span>
+        <input type="text" id="paperSearch" class="paper-search" placeholder="Search the menu…" autocomplete="off">
+        <div id="paperResults" class="paper-results"></div>
+        <div id="paperCart" class="paper-cart"></div>
+        <div class="order-total-row"><span>Total</span><span id="paperTotal">₱0</span></div>
+        <p class="paper-hint">Prices come from the live menu — you never type a total.</p>
+
+        <fieldset class="field">
+          <legend>How did they pay?</legend>
+          <div class="pay-options" id="paperPay">
+            <label><input type="radio" name="ppay" value="cash" checked>
+              <span><strong>Cash</strong></span></label>
+            <label><input type="radio" name="ppay" value="gcash">
+              <span><strong>GCash / Bank transfer</strong></span></label>
+            <label><input type="radio" name="ppay" value="room">
+              <span><strong>Charge to room</strong><small>Needs a signature</small></span></label>
+          </div>
+        </fieldset>
+
+        <!-- Only for charge-to-room: cash and GCash are their own proof. -->
+        <div id="paperSignBlock" class="hidden">
+          <label class="field"><span class="field-label">Name of the person signing</span>
+            <input type="text" id="paperSignedName" maxlength="60" placeholder="Printed, so it can be read later"></label>
+          <span class="field-label">Signature</span>
+          <p class="paper-hint">Hand the phone to the guest to sign.</p>
+          <canvas id="paperSigCanvas" class="sig-canvas"></canvas>
+          <button type="button" class="link-btn" id="paperSigClear">Clear signature</button>
+        </div>
+
+        <label class="field"><span class="field-label">Note</span>
+          <input type="text" id="paperNote" maxlength="200" placeholder="Allergies, requests, anything written on the slip"></label>
+
+        <label class="proof-label">
+          <input type="file" id="paperPhoto" accept="image/*">
+          <span id="paperPhotoText">📷 Photo of the paper slip (optional)</span>
+        </label>
+
+        <label class="field hidden" id="paperWhenField"><span class="field-label">When was it ordered? <small>Admin only — leave blank for now</small></span>
+          <input type="datetime-local" id="paperWhen"></label>
+
+        <button class="btn-primary" type="button" id="paperSaveBtn">Record this order</button>
+      </div>
+
       <div id="ordersList"></div>
     </main>
 

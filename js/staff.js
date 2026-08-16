@@ -188,14 +188,31 @@ function subscribeOrders() {
         const { data } = await db.from('orders')
           .select('*, order_items(item_name, qty, line_total)')
           .eq('id', payload.new.id).single();
-        if (data) {
-          state.orders.set(data.id, data);
-          renderOrders();
-          chime();
-          startNagging();          // keeps chiming until someone starts prepping
-          showOrderNotification(data);
-          toast(`New order #${data.order_number} — ${data.is_dining_in ? 'Dining in' : 'Room ' + data.room_number}`);
+        if (!data) return;
+        state.orders.set(data.id, data);
+        renderOrders();
+        // Don't alert the person who just typed it in — they're looking at the
+        // screen. Other devices still get the full treatment, because a paper
+        // order sent to the kitchen is news to the kitchen. (Web push is
+        // suppressed for manual orders entirely, in db/027.)
+        //
+        // Matched on the id this device just created, not on the name:
+        // entered_by comes from the staff table while currentName comes from
+        // the auth metadata, and the two are free to drift apart. The time
+        // window is the backstop for the realtime event arriving before the
+        // RPC's reply does.
+        if (data.is_manual
+            && (myManualOrders.has(data.id) || Date.now() - lastManualSaveAt < 15000)) {
+          myManualOrders.delete(data.id);
+          return;
         }
+        // Nothing to chase on an order that was already served before it was
+        // recorded — the nag exists to get someone to start prepping.
+        if (data.status === 'delivered') return;
+        chime();
+        startNagging();          // keeps chiming until someone starts prepping
+        showOrderNotification(data);
+        toast(`New order #${data.order_number} — ${data.is_dining_in ? 'Dining in' : 'Room ' + data.room_number}`);
       }, 600);
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
@@ -280,6 +297,27 @@ function renderOrders() {
   rows.forEach(e => list.appendChild(e.type === 'order' ? orderCard(e.row) : requestCard(e.row)));
 }
 
+// How long the table actually waited. Everything is counted from when the
+// order was placed, because that's the number a guest experiences — the gaps
+// between steps are interesting to the kitchen, but "22 minutes" is what the
+// person at the table felt. Stamps come from the DB trigger (db/026), so an
+// order that pre-dates it simply shows nothing rather than a fake zero.
+const minsAfterOrder = (o, iso) =>
+  Math.max(0, Math.round((new Date(iso) - new Date(o.created_at)) / 60000));
+
+function timingLine(o) {
+  const steps = [
+    ['Started', o.acknowledged_at],
+    ['On the way', o.on_the_way_at],
+    ['Delivered', o.delivered_at],
+  ].filter(([, at]) => at);
+  if (!steps.length) return '';
+  const clock = at => new Date(at).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
+  return `<div class="order-timing" title="${steps.map(([l, at]) => `${l}: ${clock(at)}`).join('\n')}">
+    ⏱ ${steps.map(([l, at]) => `${l} ${minsAfterOrder(o, at)}m`).join(' · ')}
+    <small>after ordering</small></div>`;
+}
+
 // Room service says which door. Dining in used to say only "Dining in", which
 // is the one case where staff have to actually find someone — so name the area
 // the code came from (access_room, stored since day one and never shown) and,
@@ -320,11 +358,13 @@ function orderCard(o) {
       <span class="chip room-chip">${whereChip(o)}</span>
       ${o.guest_name ? `<span class="chip who-chip">🙋 ${esc(o.guest_name)}</span>` : ''}
       ${o.table_label ? `<span class="chip table-chip">Table ${esc(o.table_label)}</span>` : ''}
+      ${o.is_manual ? `<span class="chip paper-chip">✍ On paper${o.entered_by ? ' · ' + esc(o.entered_by) : ''}</span>` : ''}
       ${payChip}${doneChip}
     </div>
     <ul class="order-items">${items}</ul>
     ${o.note ? `<div class="order-note">📝 ${esc(o.note)}</div>` : ''}
     <div class="order-total-row"><span>Total</span><span>${peso(o.total)}</span></div>
+    ${timingLine(o)}
     ${hasDiscount(o) ? `
       <div class="discount-row"><span>♿ Senior/PWD ×${o.discount_eligible} of ${o.discount_diners} diner${o.discount_diners > 1 ? 's' : ''} (−20%)</span><span>−${peso(o.discount_amount)}</span></div>
       <div class="order-total-row due-row"><span>Amount due</span><span>${peso(Number(o.total) - Number(o.discount_amount))}</span></div>` : ''}
@@ -355,8 +395,20 @@ function orderCard(o) {
     db.storage.from('signatures').createSignedUrl(o.signature_url, 3600).then(({ data }) => {
       if (data?.signedUrl) {
         card.querySelector('.proof-slot').insertAdjacentHTML('beforeend',
-          `<div class="sig-label">✍ Signed — charge to room</div>
+          `<div class="sig-label">✍ Signed${o.guest_signed_name ? ' by ' + esc(o.guest_signed_name) : ''} — charge to room</div>
            <img class="sig-thumb" src="${data.signedUrl}" alt="Guest signature">`);
+      }
+    });
+  }
+
+  // The original slip, kept so a keyed order can always be checked against
+  // what was actually written down.
+  if (o.paper_url) {
+    db.storage.from('paper-orders').createSignedUrl(o.paper_url, 3600).then(({ data }) => {
+      if (data?.signedUrl) {
+        card.querySelector('.proof-slot').insertAdjacentHTML('beforeend',
+          `<div class="sig-label">📷 The paper slip</div>
+           <a href="${data.signedUrl}" target="_blank" rel="noopener"><img class="proof-thumb" src="${data.signedUrl}" alt="Photo of the paper order slip"></a>`);
       }
     });
   }
@@ -716,6 +768,14 @@ $('exportBtn').onclick = async () => {
       'Items': (o.order_items || []).map(i => `${i.item_name} x${i.qty}`).join('; '),
       'Note': o.note || '', 'Sent out by': o.handled_by || '', 'Cancelled by': o.cancelled_by || '',
       'Discount by': o.discount_by || '',
+      // Clock times for reading a single day, minutes for charting a month.
+      'Started at': o.acknowledged_at ? dt(o.acknowledged_at).time : '',
+      'On the way at': o.on_the_way_at ? dt(o.on_the_way_at).time : '',
+      'Delivered at': o.delivered_at ? dt(o.delivered_at).time : '',
+      'Mins to start': o.acknowledged_at ? minsAfterOrder(o, o.acknowledged_at) : '',
+      'Mins to deliver': o.delivered_at ? minsAfterOrder(o, o.delivered_at) : '',
+      'Taken on paper': o.is_manual ? 'Yes' : '',
+      'Entered by': o.entered_by || '', 'Signed by': o.guest_signed_name || '',
     }; });
     const linesSheet = data.flatMap(o => (o.order_items || []).map(i => ({
       'Order #': Number(o.order_number), 'Date': dt(o.created_at).date,
@@ -962,12 +1022,257 @@ function removeStoredPhoto(url) {
   db.storage.from('menu-images').remove([path]).catch(console.error);
 }
 
+// ── Paper orders ────────────────────────────────────────────────────
+// An order taken by hand, keyed in afterwards. Staff tap the real menu so the
+// total is computed server-side exactly like a guest order — nobody types an
+// amount. The photo of the slip is kept as the source document, not as the
+// data: a picture of a page can't be summed, discounted or exported.
+
+const paperCart = new Map();   // `${itemId}|${option}` -> { id, name, option, price, qty }
+
+// Orders this device just recorded, so the realtime feed doesn't chime at the
+// person who typed them. See the INSERT handler for why it isn't name-matched.
+const myManualOrders = new Set();
+let lastManualSaveAt = 0;
+
+$('paperToggle').onclick = () => {
+  const panel = $('paperPanel');
+  const opening = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden');
+  $('exportPanel').classList.add('hidden');   // one panel at a time
+  if (!opening) return;
+  fillPaperRooms();
+  // Back-dating moves an order into a period Lexi may already have
+  // reconciled, so it stays with the people who own the books.
+  $('paperWhenField').classList.toggle('hidden', currentRole !== 'admin');
+  panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+};
+
+function fillPaperRooms() {
+  const sel = $('paperRoom');
+  if (sel.options.length) return;
+  (state.rooms || []).filter(r => r.kind === 'room' && r.is_active).forEach(r => {
+    const o = document.createElement('option');
+    o.value = r.name; o.textContent = r.name;
+    sel.appendChild(o);
+  });
+}
+
+$('paperLoc').addEventListener('change', () => {
+  const room = document.querySelector('input[name="ploc"]:checked')?.value === 'room';
+  $('paperRoomField').classList.toggle('hidden', !room);
+});
+
+$('paperPay').addEventListener('change', () => {
+  const charging = document.querySelector('input[name="ppay"]:checked')?.value === 'room';
+  $('paperSignBlock').classList.toggle('hidden', !charging);
+  if (charging) paperSigInit();   // canvas only has layout once it's visible
+});
+
+// ── item picker ──
+$('paperSearch').oninput = () => renderPaperResults();
+
+function renderPaperResults() {
+  const q = $('paperSearch').value.trim().toLowerCase();
+  const box = $('paperResults');
+  box.innerHTML = '';
+  if (!q) return;
+  // One row per orderable thing: an item with size options is really several
+  // different prices, and staff are reading a slip that says "Pancit for 6".
+  const rows = [];
+  state.menu.filter(m => m.name.toLowerCase().includes(q)).forEach(m => {
+    const opts = Array.isArray(m.options) ? m.options : [];
+    if (!opts.length) { rows.push({ id: m.id, name: m.name, option: null, price: Number(m.price) }); return; }
+    opts.forEach(o => {
+      const label = typeof o === 'string' ? o : o.label;
+      const price = typeof o === 'string' ? Number(m.price) : Number(o.price ?? m.price);
+      rows.push({ id: m.id, name: m.name, option: label, price });
+    });
+  });
+  rows.slice(0, 10).forEach(r => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'paper-result';
+    b.innerHTML = `<span>${esc(r.name)}${r.option ? ` <small>${esc(r.option)}</small>` : ''}</span><span>${peso(r.price)}</span>`;
+    b.onclick = () => { addToPaperCart(r); $('paperSearch').value = ''; box.innerHTML = ''; };
+    box.appendChild(b);
+  });
+}
+
+function addToPaperCart(r) {
+  const key = `${r.id}|${r.option || ''}`;
+  const line = paperCart.get(key);
+  if (line) line.qty += 1; else paperCart.set(key, { ...r, qty: 1 });
+  renderPaperCart();
+}
+
+function renderPaperCart() {
+  const wrap = $('paperCart');
+  wrap.innerHTML = '';
+  let total = 0;
+  paperCart.forEach((l, key) => {
+    total += l.price * l.qty;
+    const row = document.createElement('div');
+    row.className = 'paper-line';
+    row.innerHTML = `
+      <span class="paper-line-name">${esc(l.name)}${l.option ? ` <small>${esc(l.option)}</small>` : ''}</span>
+      <span class="paper-qty">
+        <button type="button" class="icon-btn" data-d="-1">−</button>
+        <b>${l.qty}</b>
+        <button type="button" class="icon-btn" data-d="1">+</button>
+      </span>
+      <span class="paper-line-total">${peso(l.price * l.qty)}</span>`;
+    row.querySelectorAll('[data-d]').forEach(btn => {
+      btn.onclick = () => {
+        l.qty += Number(btn.dataset.d);
+        if (l.qty < 1) paperCart.delete(key);
+        renderPaperCart();
+      };
+    });
+    wrap.appendChild(row);
+  });
+  $('paperTotal').textContent = peso(total);
+}
+
+// ── signature pad (charge to room only) ──
+// Same pad the guest app uses, on the staff device: staff hand the phone over
+// the way you'd hand over a card machine.
+let paperSigCtx = null, paperSigInk = false;
+const paperSig = $('paperSigCanvas');
+
+function paperSigInit() {
+  const rect = paperSig.getBoundingClientRect();
+  if (!rect.width || paperSigCtx) return;
+  const dpr = window.devicePixelRatio || 1;
+  paperSig.width = rect.width * dpr;
+  paperSig.height = rect.height * dpr;
+  paperSigCtx = paperSig.getContext('2d');
+  paperSigCtx.scale(dpr, dpr);
+  paperSigCtx.lineWidth = 2.2;
+  paperSigCtx.lineCap = 'round';
+  paperSigCtx.lineJoin = 'round';
+  paperSigCtx.strokeStyle = '#3D2317';
+}
+const paperSigPoint = e => {
+  const r = paperSig.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+};
+paperSig.addEventListener('pointerdown', e => {
+  paperSigInit();
+  if (!paperSigCtx) return;
+  paperSig.setPointerCapture(e.pointerId);
+  paperSigCtx.beginPath();
+  paperSigCtx.moveTo(...paperSigPoint(e));
+  e.preventDefault();
+});
+paperSig.addEventListener('pointermove', e => {
+  if (!paperSigCtx || e.buttons !== 1) return;
+  paperSigCtx.lineTo(...paperSigPoint(e));
+  paperSigCtx.stroke();
+  paperSigInk = true;
+  e.preventDefault();
+});
+function paperSigClear() {
+  if (paperSigCtx) paperSigCtx.clearRect(0, 0, paperSig.width, paperSig.height);
+  paperSigInk = false;
+}
+$('paperSigClear').onclick = paperSigClear;
+
+$('paperPhoto').onchange = () => {
+  const f = $('paperPhoto').files[0];
+  $('paperPhotoText').textContent = f ? `📷 ${f.name}` : '📷 Photo of the paper slip (optional)';
+};
+
+// ── save ──
+$('paperSaveBtn').onclick = async () => {
+  const btn = $('paperSaveBtn');
+  if (!paperCart.size) { toast('Add at least one item first.'); return; }
+
+  const diningIn = document.querySelector('input[name="ploc"]:checked')?.value !== 'room';
+  const pay = document.querySelector('input[name="ppay"]:checked')?.value || 'cash';
+  const signedName = $('paperSignedName').value.trim();
+  if (pay === 'room' && (!paperSigInk || !signedName)) {
+    toast('Charging to a room needs a signature and the signer’s name.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    let signatureUrl = null, paperUrl = null;
+    if (pay === 'room') {
+      const blob = await new Promise(r => paperSig.toBlob(r, 'image/png'));
+      signatureUrl = `${crypto.randomUUID()}.png`;
+      const { error } = await db.storage.from('signatures')
+        .upload(signatureUrl, blob, { contentType: 'image/png' });
+      if (error) throw error;
+    }
+    const photo = $('paperPhoto').files[0];
+    if (photo) {
+      paperUrl = `${crypto.randomUUID()}-${photo.name.replace(/[^\w.-]/g, '_')}`;
+      const { error } = await db.storage.from('paper-orders')
+        .upload(paperUrl, photo, { contentType: photo.type || 'image/jpeg' });
+      if (error) throw error;
+    }
+
+    const when = $('paperWhen').value;
+    lastManualSaveAt = Date.now();   // before the call: realtime can beat the reply
+    const { data, error } = await db.rpc('place_manual_order', {
+      p_room_name: diningIn ? null : $('paperRoom').value,
+      p_is_dining_in: diningIn,
+      p_payment_intent: pay,
+      p_note: $('paperNote').value.trim() || null,
+      p_items: [...paperCart.values()].map(l => ({ menu_item_id: l.id, qty: l.qty, option: l.option })),
+      p_guest_name: $('paperGuestName').value.trim() || null,
+      p_table_label: $('paperTable').value.trim() || null,
+      p_signature_url: signatureUrl,
+      p_guest_signed_name: signedName || null,
+      p_paper_url: paperUrl,
+      p_already_served: document.querySelector('input[name="served"]:checked')?.value === 'yes',
+      // datetime-local has no timezone; the browser is already on Manila time
+      p_ordered_at: when ? new Date(when).toISOString() : null,
+    });
+    if (error) throw error;
+
+    myManualOrders.add(data.order_id);
+    toast(`Recorded as order #${data.order_number}.`);
+    resetPaperForm();
+    $('paperPanel').classList.add('hidden');
+    loadOrders();
+  } catch (err) {
+    console.error(err);
+    toast(err.message === 'not authorised'
+      ? 'Your login is no longer active — sign out and back in.'
+      : 'Could not save that order. Check your connection and try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Record this order';
+  }
+};
+
+function resetPaperForm() {
+  paperCart.clear();
+  renderPaperCart();
+  paperSigClear();
+  ['paperGuestName', 'paperTable', 'paperNote', 'paperSignedName', 'paperSearch', 'paperWhen']
+    .forEach(id => { $(id).value = ''; });
+  $('paperPhoto').value = '';
+  $('paperPhotoText').textContent = '📷 Photo of the paper slip (optional)';
+  $('paperResults').innerHTML = '';
+  document.querySelector('input[name="served"][value="no"]').checked = true;
+  document.querySelector('input[name="ploc"][value="dining"]').checked = true;
+  document.querySelector('input[name="ppay"][value="cash"]').checked = true;
+  $('paperRoomField').classList.add('hidden');
+  $('paperSignBlock').classList.add('hidden');
+}
+
 // ── Rooms: access codes ─────────────────────────────────────────────
 
 async function loadRooms() {
   const { data, error } = await db.from('rooms')
     .select('name, code, kind, is_active').order('created_at');
   if (error) { console.error(error); return; }
+  state.rooms = data;
   const wrap = $('roomsList');
   wrap.innerHTML = '';
   data.forEach(room => wrap.appendChild(roomRow(room)));
