@@ -488,6 +488,16 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
   padding: 14px;
   margin-bottom: 16px;
 }
+/* Card asks nothing of the guest, so this is pure reassurance — same frame as
+   the GCash panel so the checkout doesn't change shape between options. */
+.card-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.card-panel p { font-size: 13.5px; color: var(--ink-soft); margin: 0; line-height: 1.45; }
 .gcash-panel img { max-width: 340px; width: 100%; border-radius: 8px; }
 .gcash-panel p { font-size: 12.5px; color: var(--ink-soft); margin: 8px 0; }
 .proof-label {

@@ -101,8 +101,16 @@
             <span><strong>GCash / Bank transfer</strong><small>Pay now via QR</small></span></label>
           <label><input type="radio" name="pay" value="cash">
             <span><strong>Cash</strong><small>Pay on delivery</small></span></label>
+          <label><input type="radio" name="pay" value="card">
+            <span><strong>Credit / debit card</strong><small>Settle at the front desk</small></span></label>
         </div>
       </fieldset>
+
+      <!-- Card needs nothing from the guest: no QR to scan, no proof to
+           upload, no signature. The card machine is at the desk. -->
+      <div class="card-panel hidden" id="cardPanel">
+        <p>💳 Please settle at the front desk — our staff will bring the card machine or take payment when you come down. Nothing else to do here.</p>
+      </div>
 
       <div class="sig-panel" id="sigPanel">
         <span class="field-label">Sign to confirm the room charge</span>

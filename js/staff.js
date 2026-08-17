@@ -335,11 +335,15 @@ function orderCard(o) {
     .map(i => `<li><span>${esc(i.item_name)} × ${i.qty}</span><span>${peso(i.line_total)}</span></li>`)
     .join('');
 
+  // Card is the one method where money is still outstanding when the food is
+  // ready, so it shouts: "unpaid" until a reference number is on the order.
   const payChip = o.payment_intent === 'room'
     ? '<span class="chip">Charge to room</span>'
     : o.payment_intent === 'gcash'
       ? '<span class="chip pay-gcash">GCash / Bank</span>'
-      : '<span class="chip pay-cash">Cash</span>';
+      : o.payment_intent === 'card'
+        ? `<span class="chip pay-card${o.payment_ref ? ' is-paid' : ''}">💳 Card${o.payment_ref ? ' · paid' : ' · UNPAID'}</span>`
+        : '<span class="chip pay-cash">Cash</span>';
 
   const by = o.handled_by ? ' by ' + esc(o.handled_by) : '';
   const doneChip = o.status === 'on_the_way'
@@ -369,8 +373,16 @@ function orderCard(o) {
       <div class="discount-row"><span>♿ Senior/PWD ×${o.discount_eligible} of ${o.discount_diners} diner${o.discount_diners > 1 ? 's' : ''} (−20%)</span><span>−${peso(o.discount_amount)}</span></div>
       <div class="order-total-row due-row"><span>Amount due</span><span>${peso(Number(o.total) - Number(o.discount_amount))}</span></div>` : ''}
     <div class="discount-slot"></div>
+    <div class="ref-slot"></div>
     <div class="proof-slot"></div>
     <div class="order-actions"></div>`;
+
+  // Maya reference, typed in after the swipe. Free text and saved on blur:
+  // Maya's format isn't guaranteed to stay the same, and a regex that guessed
+  // wrong would block a payment that actually happened.
+  if (o.payment_intent === 'card' && o.status !== 'cancelled') {
+    card.querySelector('.ref-slot').appendChild(paymentRefField(o));
+  }
 
   if (o.status !== 'cancelled') {
     const slot = card.querySelector('.discount-slot');
@@ -579,6 +591,37 @@ function cancelBtn(id) {
   return b;
 }
 
+function paymentRefField(o) {
+  const wrap = document.createElement('label');
+  wrap.className = 'ref-field';
+  wrap.innerHTML = `<span class="field-label">Maya reference number</span>
+    <input type="text" maxlength="60" autocomplete="off"
+           placeholder="Type it in after the swipe" value="${esc(o.payment_ref || '')}">`;
+  const input = wrap.querySelector('input');
+
+  input.onchange = async () => {              // change = on blur, not per keystroke
+    const ref = input.value.trim() || null;
+    if (ref === (o.payment_ref || null)) return;
+    input.disabled = true;
+    // .select() because an RLS-blocked update returns success with zero rows —
+    // without it the field would look saved while the order stayed unpaid.
+    const { data, error } = await db.from('orders')
+      .update({ payment_ref: ref }).eq('id', o.id).select('id');
+    input.disabled = false;
+    if (error || !data?.length) {
+      console.error('payment_ref update failed', error);
+      input.value = o.payment_ref || '';
+      toast('Could not save that reference — try again.');
+      return;
+    }
+    o.payment_ref = ref;
+    Object.assign(state.orders.get(o.id) || {}, { payment_ref: ref });
+    toast(ref ? 'Payment reference saved.' : 'Payment reference cleared.');
+    renderOrders();                            // flips the chip to "paid"
+  };
+  return wrap;
+}
+
 function backBtn(label, fn) {
   const b = document.createElement('button');
   b.className = 'link-btn step-back';
@@ -776,6 +819,7 @@ $('exportBtn').onclick = async () => {
       'Mins to deliver': o.delivered_at ? minsAfterOrder(o, o.delivered_at) : '',
       'Taken on paper': o.is_manual ? 'Yes' : '',
       'Entered by': o.entered_by || '', 'Signed by': o.guest_signed_name || '',
+      'Payment reference': o.payment_ref || '',
     }; });
     const linesSheet = data.flatMap(o => (o.order_items || []).map(i => ({
       'Order #': Number(o.order_number), 'Date': dt(o.created_at).date,

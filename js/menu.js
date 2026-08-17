@@ -351,6 +351,7 @@ $('payOptions').addEventListener('change', () => {
   const intent = payIntent();
   $('gcashPanel').classList.toggle('hidden', intent !== 'gcash');
   $('sigPanel').classList.toggle('hidden', intent !== 'room');
+  $('cardPanel').classList.toggle('hidden', intent !== 'card');
   if (intent === 'room') sigInit();
 });
 
@@ -474,9 +475,14 @@ $('placeOrderBtn').onclick = async () => {
 
     localStorage.setItem('tanawin-room-code', code); // keep for the stay
     $('confirmNumber').textContent = `#${data.order_number}`;
-    $('confirmDetail').textContent = state.diningIn
+    const where = state.diningIn
       ? `${peso(data.total)} — we'll serve it at your table.`
       : `${peso(data.total)} — for ${data.room_number}.`;
+    // Card is the one method with an action still outstanding when the order
+    // is placed, so say so on the screen they actually read.
+    $('confirmDetail').textContent = payIntent() === 'card'
+      ? `${where} Please settle by card at the front desk.`
+      : where;
     // dining_in is remembered so the tracker knows whether to offer plate
     // collection later — dining tables are cleared by staff anyway
     startTracking({ order_id: data.order_id, order_number: data.order_number,

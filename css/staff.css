@@ -238,6 +238,21 @@
 }
 .chip.pay-gcash { background: #E7F0E7; color: var(--green); }
 .chip.pay-cash { background: #FBF0DC; color: var(--amber); }
+/* Card money is still uncollected when the food goes out, so the unpaid state
+   is loud on purpose and goes quiet once a reference is recorded. */
+.chip.pay-card { background: #A03A2A; color: #fff; }
+.chip.pay-card.is-paid { background: #E7F0E7; color: var(--green); }
+.ref-field { display: block; margin: 10px 0 4px; }
+.ref-field input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px;
+  font-size: 16px;              /* 16px or iOS zooms on focus */
+  background: #fff;
+  color: var(--ink);
+}
+.ref-field input:disabled { opacity: 0.6; }
 /* ── Guest requests in the order feed ───────────────── */
 /* Tinted edge so a request is distinguishable at a glance from food
    while still sitting in the same chronological list. */
