@@ -74,9 +74,13 @@
       <div class="filter-row">
         <button class="cat-pill active" data-filter="active">Active</button>
         <button class="cat-pill" data-filter="done">Done</button>
-        <button class="cat-pill export-toggle" id="paperToggle">✍ Paper order</button>
-        <button class="cat-pill export-toggle hidden" id="olderToggle">🕐 Older orders</button>
-        <button class="cat-pill export-toggle" id="exportToggle">⬇ Excel</button>
+        <!-- Actions are grouped so they wrap as a block instead of one pill at
+             a time, and so the row can never push the page sideways. -->
+        <span class="filter-actions">
+          <button class="cat-pill" id="paperToggle">✍ Paper order</button>
+          <button class="cat-pill hidden" id="olderToggle">🕐 Older orders</button>
+          <button class="cat-pill" id="exportToggle">⬇ Excel</button>
+        </span>
       </div>
 
       <!-- The feed holds the 100 most recent orders. Correcting something from

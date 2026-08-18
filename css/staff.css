@@ -180,10 +180,17 @@
   margin: -4px 0 10px;
 }
 
-.filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
-.export-toggle { margin-left: auto; }
-.export-dates { display: flex; gap: 10px; }
-.export-dates .field { flex: 1; margin-bottom: 10px; }
+/* Pills never shrink (.cat-pill is flex:0 0 auto), so this row MUST wrap —
+   without it, every button added here pushes the whole page sideways. That is
+   exactly what happened when Paper order and Older orders joined Excel. */
+.filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+/* Actions sit right on a wide screen and drop to their own line on a phone.
+   margin-left:auto only applies while they share a line with the filters. */
+.filter-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.export-dates { display: flex; gap: 10px; flex-wrap: wrap; }
+/* min-width:0 or a date input's intrinsic width refuses to shrink and takes
+   the panel wider than the screen. */
+.export-dates .field { flex: 1; min-width: 130px; margin-bottom: 10px; }
 .export-dates input {
   width: 100%;
   border: 1px solid var(--line);
