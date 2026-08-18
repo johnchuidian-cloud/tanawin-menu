@@ -15,6 +15,7 @@ const state = {
   menu: [],
   categories: CATEGORIES, // replaced by the categories table on load
   editingId: null,        // menu item being edited (null = new)
+  dateRange: null,        // {from, to} = showing past orders instead of recent
   pendingPhoto: null,     // File chosen in the edit sheet
   photoRemoved: false,
   channel: null,
@@ -55,6 +56,7 @@ async function showApp(user) {
   }
   $('settingsTab').classList.toggle('hidden', !isAdmin);
   $('staffTab').classList.toggle('hidden', !isAdmin);
+  $('olderToggle').classList.toggle('hidden', !isAdmin);   // back-editing is an admin job
   const hubLink = $('hubLink');
   hubLink.classList.remove('hidden');
   // admins get the full hub (incl. Payroll); staff get the staff launcher
@@ -153,17 +155,69 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 // ── Orders: load, realtime, render ──────────────────────────────────
 
+// state.dateRange non-null = showing a past window instead of the recent feed.
+// The edit form needs unit_price to seed its picker, so it's selected here too.
 async function loadOrders() {
-  const { data, error } = await db
-    .from('orders')
-    .select('*, order_items(item_name, qty, line_total)')
-    .order('created_at', { ascending: false })
-    .limit(100);
+  let q = db.from('orders')
+    .select('*, order_items(item_name, qty, unit_price, line_total, menu_item_id)')
+    .order('created_at', { ascending: false });
+
+  if (state.dateRange) {
+    const end = new Date(state.dateRange.to + 'T00:00:00');
+    end.setDate(end.getDate() + 1);          // 'to' is inclusive
+    q = q.gte('created_at', new Date(state.dateRange.from + 'T00:00:00').toISOString())
+         .lt('created_at', end.toISOString())
+         .limit(500);
+  } else {
+    q = q.limit(100);
+  }
+
+  const { data, error } = await q;
   if (error) { toast('Could not load orders.'); console.error(error); return; }
   state.orders.clear();
   data.forEach(o => state.orders.set(o.id, o));
   renderOrders();
 }
+
+// ── Reaching past orders ────────────────────────────────────────────
+// The feed is the 100 most recent, which is right for a shift but useless for
+// correcting a run of orders from last month. Admins get a date window.
+
+$('olderToggle').onclick = () => {
+  const panel = $('olderPanel');
+  panel.classList.toggle('hidden');
+  $('exportPanel').classList.add('hidden');
+  $('paperPanel').classList.add('hidden');
+  if (!panel.classList.contains('hidden') && !$('olderFrom').value) {
+    // default to the month before this one — the usual reason to look back
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const last = new Date(now.getFullYear(), now.getMonth(), 0);
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    $('olderFrom').value = iso(first);
+    $('olderTo').value = iso(last);
+  }
+};
+
+$('olderLoadBtn').onclick = async () => {
+  const from = $('olderFrom').value, to = $('olderTo').value;
+  if (!from || !to) { toast('Pick both dates first.'); return; }
+  if (from > to) { toast('The "from" date is after the "to" date.'); return; }
+  state.dateRange = { from, to };
+  await loadOrders();
+  $('olderPanel').classList.add('hidden');
+  $('olderBanner').classList.remove('hidden');
+  $('olderBannerText').textContent = `Showing ${from} to ${to} — ${state.orders.size} order${state.orders.size === 1 ? '' : 's'}`;
+  // Old orders are finished ones, so land on the filter that shows them.
+  document.querySelector('[data-filter="done"]')?.click();
+};
+
+$('olderClearBtn').onclick = async () => {
+  state.dateRange = null;
+  $('olderBanner').classList.add('hidden');
+  await loadOrders();
+  document.querySelector('[data-filter="active"]')?.click();
+};
 
 // Guest service requests from the Concierge app (shared table, suite
 // connection #7). They ride the SAME feed as food orders.
@@ -306,6 +360,13 @@ const minsAfterOrder = (o, iso) =>
   Math.max(0, Math.round((new Date(iso) - new Date(o.created_at)) / 60000));
 
 function timingLine(o) {
+  // Not for paper orders. Their created_at is a bookkeeping figure — either
+  // when staff typed it up or, when back-dated, when the meal actually
+  // happened — so the gap to the first status tap measures the paperwork,
+  // not the service. Order #59 read "Delivered 2776m after ordering": a tab
+  // from the 16th, tapped through on the 18th. The clock times are still
+  // facts and still go in the export; only this elapsed figure is a lie.
+  if (o.is_manual) return '';
   const steps = [
     ['Started', o.acknowledged_at],
     ['On the way', o.on_the_way_at],
@@ -375,7 +436,30 @@ function orderCard(o) {
     <div class="discount-slot"></div>
     <div class="ref-slot"></div>
     <div class="proof-slot"></div>
+    <div class="edit-trail-slot"></div>
+    <div class="edit-slot"></div>
     <div class="order-actions"></div>`;
+
+  card.querySelector('.edit-trail-slot').appendChild(editTrail(o));
+
+  // Editing is admin-only, and deliberately a full-width button rather than a
+  // quiet link: Rio had to ask how to do it, and back-correcting old orders is
+  // a job someone sits down to do, not a thing to be discovered by accident.
+  if (currentRole === 'admin') {
+    const slot = card.querySelector('.edit-slot');
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'edit-order-btn';
+    openBtn.textContent = '✎ Edit this order';
+    openBtn.onclick = () => {
+      openBtn.classList.add('hidden');
+      slot.appendChild(editOrderForm(o, () => {
+        slot.innerHTML = '';
+        openBtn.classList.remove('hidden');
+      }));
+    };
+    slot.before(openBtn);
+  }
 
   // Maya reference, typed in after the swipe. Free text and saved on blur:
   // Maya's format isn't guaranteed to stay the same, and a regex that guessed
@@ -589,6 +673,221 @@ function cancelBtn(id) {
   b.textContent = 'Cancel';
   b.onclick = () => { if (confirm('Cancel this order?')) setStatus(id, 'cancelled'); };
   return b;
+}
+
+// ── Editing an order (admin only) ───────────────────────────────────
+// Restricted to admins on John's instruction: a total is money owed, and
+// someone who can quietly drop a line from a settled tab can pocket the
+// difference. Every edit needs a written reason and is kept forever.
+
+const PAY_LABEL = { room: 'Charge to room', gcash: 'GCash / Bank', cash: 'Cash', card: 'Credit / debit card' };
+
+// Field names as staff would say them, for the trail.
+const EDIT_FIELD_LABEL = {
+  payment_intent: 'Payment', note: 'Note', guest_name: 'Guest name',
+  table_label: 'Table', is_dining_in: 'Location', room_number: 'Room',
+  total: 'Total', items: 'Items',
+};
+
+function editValueText(field, v) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (field === 'payment_intent') return PAY_LABEL[v] || v;
+  if (field === 'is_dining_in') return v ? 'Dining in' : 'Room service';
+  if (field === 'total') return peso(v);
+  if (field === 'items') {
+    return Array.isArray(v) ? v.map(i => `${i.item_name} × ${i.qty}`).join(', ') : '—';
+  }
+  return String(v);
+}
+
+function editOrderForm(o, close) {
+  const form = document.createElement('div');
+  form.className = 'edit-form';
+  const rooms = (state.rooms || []).filter(r => r.kind === 'room' && r.is_active);
+
+  form.innerHTML = `
+    <span class="field-label">Editing order #${o.order_number}</span>
+    <fieldset class="field"><legend>Where</legend>
+      <div class="pay-options edit-loc">
+        <label><input type="radio" name="eloc-${o.id}" value="dining" ${o.is_dining_in ? 'checked' : ''}>
+          <span><strong>Dining area</strong></span></label>
+        <label><input type="radio" name="eloc-${o.id}" value="room" ${o.is_dining_in ? '' : 'checked'}>
+          <span><strong>To a room</strong></span></label>
+      </div>
+    </fieldset>
+    <label class="field edit-room ${o.is_dining_in ? 'hidden' : ''}"><span class="field-label">Which room</span>
+      <select>${rooms.map(r => `<option ${r.name === o.room_number ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+    </label>
+    <div class="paper-two-up">
+      <label class="field"><span class="field-label">Guest name</span>
+        <input type="text" class="edit-guest" maxlength="60" value="${esc(o.guest_name || '')}"></label>
+      <label class="field"><span class="field-label">Table</span>
+        <input type="text" class="edit-table" maxlength="20" value="${esc(o.table_label || '')}"></label>
+    </div>
+    <span class="field-label">Items</span>
+    <div class="edit-picker-mount"></div>
+    <fieldset class="field"><legend>Payment</legend>
+      <div class="pay-options edit-pay">
+        ${['cash', 'gcash', 'card', 'room'].map(v => `
+          <label><input type="radio" name="epay-${o.id}" value="${v}" ${o.payment_intent === v ? 'checked' : ''}>
+            <span><strong>${PAY_LABEL[v]}</strong></span></label>`).join('')}
+      </div>
+    </fieldset>
+    <label class="field"><span class="field-label">Note</span>
+      <input type="text" class="edit-note" maxlength="200" value="${esc(o.note || '')}"></label>
+    <label class="field"><span class="field-label">Why are you changing this? <small>Required — Lexi sees this</small></span>
+      <input type="text" class="edit-reason" maxlength="200" placeholder="e.g. guests actually paid by card"></label>
+    <div class="order-actions">
+      <button type="button" class="btn-primary edit-save">Save changes</button>
+      <button type="button" class="btn-secondary edit-cancel">Cancel</button>
+    </div>`;
+
+  // Seed the picker with what's on the order now. order_items stores the
+  // name snapshot with the option baked in ("Pancit (Canton · for 6)"), so
+  // the option is recovered from the brackets to match a menu row again.
+  const lines = (o.order_items || []).map(i => {
+    const m = /^(.*?) \((.*)\)$/.exec(i.item_name);
+    const name = m ? m[1] : i.item_name;
+    const option = m ? m[2] : null;
+    const menuItem = state.menu.find(x => x.name === name);
+    return { id: menuItem?.id || i.menu_item_id, name, option,
+             price: Number(i.unit_price), qty: i.qty };
+  }).filter(l => l.id);
+  const picker = itemPicker(lines);
+  form.querySelector('.edit-picker-mount').appendChild(picker.el);
+
+  const locRadios = form.querySelectorAll(`input[name="eloc-${o.id}"]`);
+  locRadios.forEach(r => r.addEventListener('change', () => {
+    const dining = form.querySelector(`input[name="eloc-${o.id}"]:checked`).value === 'dining';
+    form.querySelector('.edit-room').classList.toggle('hidden', dining);
+  }));
+
+  form.querySelector('.edit-cancel').onclick = close;
+
+  form.querySelector('.edit-save').onclick = async () => {
+    const btn = form.querySelector('.edit-save');
+    const reason = form.querySelector('.edit-reason').value.trim();
+    if (!reason) { toast('Please say why you are changing it.'); return; }
+    if (!picker.size()) { toast('An order needs at least one item.'); return; }
+    const dining = form.querySelector(`input[name="eloc-${o.id}"]:checked`).value === 'dining';
+
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    const { data, error } = await db.rpc('edit_order', {
+      p_order_id: o.id,
+      p_reason: reason,
+      p_payment_intent: form.querySelector(`input[name="epay-${o.id}"]:checked`).value,
+      p_note: form.querySelector('.edit-note').value.trim() || null,
+      p_guest_name: form.querySelector('.edit-guest').value.trim() || null,
+      p_table_label: form.querySelector('.edit-table').value.trim() || null,
+      p_is_dining_in: dining,
+      p_room_name: dining ? null : form.querySelector('.edit-room select').value,
+      p_items: picker.items(),
+    });
+    btn.disabled = false;
+    btn.textContent = 'Save changes';
+
+    if (error) {
+      console.error(error);
+      toast(error.message?.includes('admin')
+        ? 'Only an admin can edit an order.'
+        : 'Could not save that change — try again.');
+      return;
+    }
+    if (data?.unchanged) { toast('Nothing was different — no change recorded.'); close(); return; }
+    toast(data.review === 'pending'
+      ? 'Saved. Lexi will see it for approval.'
+      : 'Saved.');
+    close();
+    await loadOrders();
+  };
+
+  return form;
+}
+
+// The history of an order, and Lexi's approve/undo where it applies.
+function editTrail(o) {
+  const wrap = document.createElement('div');
+  const log = Array.isArray(o.edit_log) ? o.edit_log : [];
+  if (!log.length) return wrap;
+
+  const pending = log.filter(e => e.review === 'pending').length;
+  wrap.className = 'edit-trail';
+  const summary = document.createElement('button');
+  summary.type = 'button';
+  summary.className = 'edit-trail-toggle' + (pending ? ' needs-review' : '');
+  summary.textContent = pending
+    ? `✎ Edited ${log.length}× · ${pending} waiting for Lexi`
+    : `✎ Edited ${log.length}×`;
+  wrap.appendChild(summary);
+
+  const list = document.createElement('div');
+  list.className = 'edit-trail-list hidden';
+  wrap.appendChild(list);
+  summary.onclick = () => list.classList.toggle('hidden');
+
+  log.slice().reverse().forEach((e, revIdx) => {
+    const isLatest = revIdx === 0;
+    const row = document.createElement('div');
+    row.className = 'edit-entry';
+    const changes = Object.entries(e.changes || {})
+      .map(([f, [from, to]]) =>
+        `<li><b>${EDIT_FIELD_LABEL[f] || f}:</b> ${esc(editValueText(f, from))} → ${esc(editValueText(f, to))}</li>`)
+      .join('');
+    const stateLabel = e.review === 'approved'
+      ? `<span class="edit-state ok">Approved${e.reviewed_by ? ' by ' + esc(e.reviewed_by) : ''}</span>`
+      : e.review === 'vetoed'
+        ? `<span class="edit-state vetoed">Undone${e.reviewed_by ? ' by ' + esc(e.reviewed_by) : ''}</span>`
+        : '<span class="edit-state pending">Waiting for Lexi</span>';
+    row.innerHTML = `
+      <div class="edit-entry-top"><b>${esc(e.by || 'Someone')}</b>
+        <span>${esc((e.at || '').replace('T', ' ').slice(0, 16))}</span></div>
+      <div class="edit-reason-text">“${esc(e.reason || '')}”</div>
+      <ul class="edit-changes">${changes}</ul>
+      ${stateLabel}`;
+
+    // Only the prime admin reviews, and only the most recent edit can be
+    // undone — restoring an older snapshot would silently throw away every
+    // edit made after it.
+    if (currentIsPrime && e.review === 'pending') {
+      const actions = document.createElement('div');
+      actions.className = 'edit-review-actions';
+      const approve = document.createElement('button');
+      approve.type = 'button';
+      approve.className = 'btn-secondary';
+      approve.textContent = '✓ Approve';
+      approve.onclick = () => reviewEdit(o.id, e.id, true);
+      actions.appendChild(approve);
+      if (isLatest) {
+        const veto = document.createElement('button');
+        veto.type = 'button';
+        veto.className = 'btn-secondary danger-btn';
+        veto.textContent = '✕ Undo this change';
+        veto.onclick = () => {
+          if (confirm('Put this order back the way it was before this edit?')) reviewEdit(o.id, e.id, false);
+        };
+        actions.appendChild(veto);
+      }
+      row.appendChild(actions);
+    }
+    list.appendChild(row);
+  });
+  return wrap;
+}
+
+async function reviewEdit(orderId, editId, approve) {
+  const { error } = await db.rpc('review_order_edit', {
+    p_order_id: orderId, p_edit_id: editId, p_approve: approve,
+  });
+  if (error) {
+    console.error(error);
+    toast(error.message?.includes('most recent')
+      ? 'Undo the newest change first.'
+      : 'Could not do that — try again.');
+    return;
+  }
+  toast(approve ? 'Approved.' : 'Change undone.');
+  await loadOrders();
 }
 
 function paymentRefField(o) {
@@ -815,8 +1114,10 @@ $('exportBtn').onclick = async () => {
       'Started at': o.acknowledged_at ? dt(o.acknowledged_at).time : '',
       'On the way at': o.on_the_way_at ? dt(o.on_the_way_at).time : '',
       'Delivered at': o.delivered_at ? dt(o.delivered_at).time : '',
-      'Mins to start': o.acknowledged_at ? minsAfterOrder(o, o.acknowledged_at) : '',
-      'Mins to deliver': o.delivered_at ? minsAfterOrder(o, o.delivered_at) : '',
+      // Blank on paper orders for the same reason the card hides them: the
+      // elapsed figure would measure bookkeeping, not service.
+      'Mins to start': !o.is_manual && o.acknowledged_at ? minsAfterOrder(o, o.acknowledged_at) : '',
+      'Mins to deliver': !o.is_manual && o.delivered_at ? minsAfterOrder(o, o.delivered_at) : '',
       'Taken on paper': o.is_manual ? 'Yes' : '',
       'Entered by': o.entered_by || '', 'Signed by': o.guest_signed_name || '',
       'Payment reference': o.payment_ref || '',
@@ -1072,8 +1373,6 @@ function removeStoredPhoto(url) {
 // amount. The photo of the slip is kept as the source document, not as the
 // data: a picture of a page can't be summed, discounted or exported.
 
-const paperCart = new Map();   // `${itemId}|${option}` -> { id, name, option, price, qty }
-
 // Orders this device just recorded, so the realtime feed doesn't chime at the
 // person who typed them. See the INSERT handler for why it isn't name-matched.
 const myManualOrders = new Set();
@@ -1114,69 +1413,101 @@ $('paperPay').addEventListener('change', () => {
 });
 
 // ── item picker ──
-$('paperSearch').oninput = () => renderPaperResults();
+// Shared by the paper-order form and the edit form. Both need exactly the
+// same thing — search the live menu, tap to add, adjust quantities, watch a
+// running total — and two copies of that would drift apart the first time
+// either changed.
+//
+// `lines` seeds it: empty for a new paper order, the current contents for an
+// edit. Returns the element plus the accessors the caller needs; the caller
+// never touches the internal map.
+function itemPicker(lines = []) {
+  const cart = new Map(lines.map(l => [`${l.id}|${l.option || ''}`, { ...l }]));
 
-function renderPaperResults() {
-  const q = $('paperSearch').value.trim().toLowerCase();
-  const box = $('paperResults');
-  box.innerHTML = '';
-  if (!q) return;
-  // One row per orderable thing: an item with size options is really several
-  // different prices, and staff are reading a slip that says "Pancit for 6".
-  const rows = [];
-  state.menu.filter(m => m.name.toLowerCase().includes(q)).forEach(m => {
-    const opts = Array.isArray(m.options) ? m.options : [];
-    if (!opts.length) { rows.push({ id: m.id, name: m.name, option: null, price: Number(m.price) }); return; }
-    opts.forEach(o => {
-      const label = typeof o === 'string' ? o : o.label;
-      const price = typeof o === 'string' ? Number(m.price) : Number(o.price ?? m.price);
-      rows.push({ id: m.id, name: m.name, option: label, price });
+  const el = document.createElement('div');
+  el.className = 'item-picker';
+  el.innerHTML = `
+    <input type="text" class="paper-search" placeholder="Search the menu…" autocomplete="off">
+    <div class="paper-results"></div>
+    <div class="paper-cart"></div>
+    <div class="order-total-row"><span>Total</span><span class="picker-total">₱0</span></div>`;
+
+  const search = el.querySelector('.paper-search');
+  const results = el.querySelector('.paper-results');
+  const cartBox = el.querySelector('.paper-cart');
+
+  search.oninput = () => {
+    const q = search.value.trim().toLowerCase();
+    results.innerHTML = '';
+    if (!q) return;
+    // One row per orderable thing: an item with size options is really several
+    // different prices, and staff are reading a slip that says "Pancit for 6".
+    const rows = [];
+    state.menu.filter(m => m.name.toLowerCase().includes(q)).forEach(m => {
+      const opts = Array.isArray(m.options) ? m.options : [];
+      if (!opts.length) { rows.push({ id: m.id, name: m.name, option: null, price: Number(m.price) }); return; }
+      opts.forEach(o => {
+        const label = typeof o === 'string' ? o : o.label;
+        const price = typeof o === 'string' ? Number(m.price) : Number(o.price ?? m.price);
+        rows.push({ id: m.id, name: m.name, option: label, price });
+      });
     });
-  });
-  rows.slice(0, 10).forEach(r => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'paper-result';
-    b.innerHTML = `<span>${esc(r.name)}${r.option ? ` <small>${esc(r.option)}</small>` : ''}</span><span>${peso(r.price)}</span>`;
-    b.onclick = () => { addToPaperCart(r); $('paperSearch').value = ''; box.innerHTML = ''; };
-    box.appendChild(b);
-  });
-}
-
-function addToPaperCart(r) {
-  const key = `${r.id}|${r.option || ''}`;
-  const line = paperCart.get(key);
-  if (line) line.qty += 1; else paperCart.set(key, { ...r, qty: 1 });
-  renderPaperCart();
-}
-
-function renderPaperCart() {
-  const wrap = $('paperCart');
-  wrap.innerHTML = '';
-  let total = 0;
-  paperCart.forEach((l, key) => {
-    total += l.price * l.qty;
-    const row = document.createElement('div');
-    row.className = 'paper-line';
-    row.innerHTML = `
-      <span class="paper-line-name">${esc(l.name)}${l.option ? ` <small>${esc(l.option)}</small>` : ''}</span>
-      <span class="paper-qty">
-        <button type="button" class="icon-btn" data-d="-1">−</button>
-        <b>${l.qty}</b>
-        <button type="button" class="icon-btn" data-d="1">+</button>
-      </span>
-      <span class="paper-line-total">${peso(l.price * l.qty)}</span>`;
-    row.querySelectorAll('[data-d]').forEach(btn => {
-      btn.onclick = () => {
-        l.qty += Number(btn.dataset.d);
-        if (l.qty < 1) paperCart.delete(key);
-        renderPaperCart();
+    rows.slice(0, 10).forEach(r => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'paper-result';
+      b.innerHTML = `<span>${esc(r.name)}${r.option ? ` <small>${esc(r.option)}</small>` : ''}</span><span>${peso(r.price)}</span>`;
+      b.onclick = () => {
+        const key = `${r.id}|${r.option || ''}`;
+        const line = cart.get(key);
+        if (line) line.qty += 1; else cart.set(key, { ...r, qty: 1 });
+        search.value = '';
+        results.innerHTML = '';
+        render();
       };
+      results.appendChild(b);
     });
-    wrap.appendChild(row);
-  });
-  $('paperTotal').textContent = peso(total);
+  };
+
+  function render() {
+    cartBox.innerHTML = '';
+    let total = 0;
+    cart.forEach((l, key) => {
+      total += l.price * l.qty;
+      const row = document.createElement('div');
+      row.className = 'paper-line';
+      row.innerHTML = `
+        <span class="paper-line-name">${esc(l.name)}${l.option ? ` <small>${esc(l.option)}</small>` : ''}</span>
+        <span class="paper-qty">
+          <button type="button" class="icon-btn" data-d="-1">−</button>
+          <b>${l.qty}</b>
+          <button type="button" class="icon-btn" data-d="1">+</button>
+        </span>
+        <span class="paper-line-total">${peso(l.price * l.qty)}</span>`;
+      row.querySelectorAll('[data-d]').forEach(btn => {
+        btn.onclick = () => {
+          l.qty += Number(btn.dataset.d);
+          if (l.qty < 1) cart.delete(key);
+          render();
+        };
+      });
+      cartBox.appendChild(row);
+    });
+    el.querySelector('.picker-total').textContent = peso(total);
+  }
+  render();
+
+  return {
+    el,
+    size: () => cart.size,
+    clear: () => { cart.clear(); search.value = ''; results.innerHTML = ''; render(); },
+    items: () => [...cart.values()].map(l => ({ menu_item_id: l.id, qty: l.qty, option: l.option })),
+  };
 }
+
+// The paper form's picker, mounted where the static markup used to be.
+const paperPicker = itemPicker();
+$('paperPickerMount').appendChild(paperPicker.el);
 
 // ── signature pad (charge to room only) ──
 // Same pad the guest app uses, on the staff device: staff hand the phone over
@@ -1230,7 +1561,7 @@ $('paperPhoto').onchange = () => {
 // ── save ──
 $('paperSaveBtn').onclick = async () => {
   const btn = $('paperSaveBtn');
-  if (!paperCart.size) { toast('Add at least one item first.'); return; }
+  if (!paperPicker.size()) { toast('Add at least one item first.'); return; }
 
   const diningIn = document.querySelector('input[name="ploc"]:checked')?.value !== 'room';
   const pay = document.querySelector('input[name="ppay"]:checked')?.value || 'cash';
@@ -1266,7 +1597,7 @@ $('paperSaveBtn').onclick = async () => {
       p_is_dining_in: diningIn,
       p_payment_intent: pay,
       p_note: $('paperNote').value.trim() || null,
-      p_items: [...paperCart.values()].map(l => ({ menu_item_id: l.id, qty: l.qty, option: l.option })),
+      p_items: paperPicker.items(),
       p_guest_name: $('paperGuestName').value.trim() || null,
       p_table_label: $('paperTable').value.trim() || null,
       p_signature_url: signatureUrl,
@@ -1295,10 +1626,9 @@ $('paperSaveBtn').onclick = async () => {
 };
 
 function resetPaperForm() {
-  paperCart.clear();
-  renderPaperCart();
+  paperPicker.clear();
   paperSigClear();
-  ['paperGuestName', 'paperTable', 'paperNote', 'paperSignedName', 'paperSearch', 'paperWhen']
+  ['paperGuestName', 'paperTable', 'paperNote', 'paperSignedName', 'paperWhen']
     .forEach(id => { $(id).value = ''; });
   $('paperPhoto').value = '';
   $('paperPhotoText').textContent = '📷 Photo of the paper slip (optional)';

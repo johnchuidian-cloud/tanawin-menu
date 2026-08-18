@@ -445,6 +445,97 @@
   color: var(--ink);
 }
 
+/* ── Editing an order ───────────────────────────────── */
+/* Full width and properly sized: Rio had to ask how to edit, so this must not
+   read as a footnote the way the step-back link deliberately does. */
+.edit-order-btn {
+  display: block;
+  width: 100%;
+  margin: 10px 0 2px;
+  border: 1.5px solid var(--terracotta);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--terracotta);
+  font-size: 15px;
+  font-weight: 800;
+  font-family: inherit;
+  padding: 12px;
+  cursor: pointer;
+}
+.edit-order-btn:hover { background: var(--cream); }
+.edit-form {
+  border: 1.5px solid var(--terracotta);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 10px 0;
+  background: var(--cream);
+}
+.edit-form input[type="text"],
+.edit-form select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px;
+  font-size: 16px;              /* 16px or iOS zooms on focus */
+  background: #fff;
+  color: var(--ink);
+}
+.edit-form .field-label small { text-transform: none; letter-spacing: 0; font-weight: 600; }
+
+.edit-trail { margin: 8px 0 2px; }
+.edit-trail-toggle {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  padding: 4px 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+/* An unreviewed edit is the one thing here Lexi must not scroll past. */
+.edit-trail-toggle.needs-review {
+  color: #A03A2A;
+  background: #F6E3DF;
+  border-radius: 999px;
+  padding: 5px 12px;
+  text-decoration: none;
+}
+.edit-trail-list { margin-top: 6px; }
+.edit-entry {
+  border-left: 3px solid var(--line);
+  padding: 8px 0 8px 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.edit-entry-top { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-soft); }
+.edit-reason-text { font-style: italic; margin: 3px 0; }
+.edit-changes { list-style: none; padding: 0; margin: 4px 0; }
+.edit-changes li { padding: 2px 0; overflow-wrap: anywhere; }
+.edit-state { font-size: 12px; font-weight: 700; }
+.edit-state.ok { color: var(--green); }
+.edit-state.pending { color: #A03A2A; }
+.edit-state.vetoed { color: var(--ink-soft); }
+.edit-review-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.edit-review-actions .btn-secondary { padding: 8px 12px; font-size: 13px; }
+.btn-secondary.danger-btn { border-color: #A03A2A; }
+
+.older-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #EFE7DC;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #7A5A32;
+}
+
 /* Service timings — a quiet footnote to the order, not a headline. */
 .order-timing {
   font-size: 12.5px;

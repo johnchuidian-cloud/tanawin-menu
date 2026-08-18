@@ -75,7 +75,26 @@
         <button class="cat-pill active" data-filter="active">Active</button>
         <button class="cat-pill" data-filter="done">Done</button>
         <button class="cat-pill export-toggle" id="paperToggle">✍ Paper order</button>
+        <button class="cat-pill export-toggle hidden" id="olderToggle">🕐 Older orders</button>
         <button class="cat-pill export-toggle" id="exportToggle">⬇ Excel</button>
+      </div>
+
+      <!-- The feed holds the 100 most recent orders. Correcting something from
+           last month means reaching past that, so admins can pull up a date
+           range instead. -->
+      <div class="settings-card hidden" id="olderPanel">
+        <span class="field-label">Find orders from a past date</span>
+        <div class="export-dates">
+          <label class="field"><span class="field-label">From</span>
+            <input type="date" id="olderFrom"></label>
+          <label class="field"><span class="field-label">To</span>
+            <input type="date" id="olderTo"></label>
+        </div>
+        <button class="btn-primary" type="button" id="olderLoadBtn">Show these orders</button>
+      </div>
+      <div class="older-banner hidden" id="olderBanner">
+        <span id="olderBannerText"></span>
+        <button type="button" class="link-btn" id="olderClearBtn">← Back to recent orders</button>
       </div>
       <!-- Food and guest requests share ONE chronological feed (Lexi: separate
            tabs get ignored); this only narrows what that feed shows. -->
@@ -132,10 +151,7 @@
         </div>
 
         <span class="field-label">Items</span>
-        <input type="text" id="paperSearch" class="paper-search" placeholder="Search the menu…" autocomplete="off">
-        <div id="paperResults" class="paper-results"></div>
-        <div id="paperCart" class="paper-cart"></div>
-        <div class="order-total-row"><span>Total</span><span id="paperTotal">₱0</span></div>
+        <div id="paperPickerMount"></div>
         <p class="paper-hint">Prices come from the live menu — you never type a total.</p>
 
         <fieldset class="field">
