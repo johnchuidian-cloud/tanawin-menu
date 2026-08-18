@@ -491,6 +491,16 @@
 }
 .edit-form .field-label small { text-transform: none; letter-spacing: 0; font-weight: 600; }
 
+.edit-items-locked {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #7A5A32;
+  background: #EFE7DC;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+
 .edit-trail { margin: 8px 0 2px; }
 .edit-trail-toggle {
   border: none;

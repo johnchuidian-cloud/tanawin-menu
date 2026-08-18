@@ -738,28 +738,67 @@ function editOrderForm(o, close) {
             <span><strong>${PAY_LABEL[v]}</strong></span></label>`).join('')}
       </div>
     </fieldset>
+    <!-- Shown for card, because switching an old order TO card is the main
+         reason anyone edits one, and the reference has to go somewhere. It was
+         landing in the reason box otherwise — four orders came through that way
+         before this field existed. -->
+    <label class="field edit-ref-field ${o.payment_intent === 'card' ? '' : 'hidden'}">
+      <span class="field-label">Maya reference number</span>
+      <input type="text" class="edit-ref" maxlength="60" value="${esc(o.payment_ref || '')}"
+             placeholder="From the terminal receipt"></label>
     <label class="field"><span class="field-label">Note</span>
       <input type="text" class="edit-note" maxlength="200" value="${esc(o.note || '')}"></label>
-    <label class="field"><span class="field-label">Why are you changing this? <small>Required — Lexi sees this</small></span>
+    <label class="field"><span class="field-label">Why are you changing this? <small>Required — Lexi sees this. Not the reference number.</small></span>
       <input type="text" class="edit-reason" maxlength="200" placeholder="e.g. guests actually paid by card"></label>
     <div class="order-actions">
       <button type="button" class="btn-primary edit-save">Save changes</button>
       <button type="button" class="btn-secondary edit-cancel">Cancel</button>
     </div>`;
 
-  // Seed the picker with what's on the order now. order_items stores the
-  // name snapshot with the option baked in ("Pancit (Canton · for 6)"), so
-  // the option is recovered from the brackets to match a menu row again.
+  // Seed the picker from menu_item_id, NEVER by parsing the name apart.
+  // order_items stores a snapshot like "Pancit Canton or Bihon (Canton · for 6)",
+  // and a regex splitting on the last bracket looks right until an item has
+  // brackets of its own: "Tinanglaran (Native Chicken in Lemongrass) (for 2)"
+  // parsed out to the option "Native Chicken in Lemongrass) (for 2", which is
+  // not a label on any menu row, so the server rejected the whole edit. That
+  // is what made order #59 uneditable for both Lexi and Rio.
+  //
+  // Instead: the id says which menu row it is, and the option is whichever
+  // label reconstructs the stored name exactly.
+  const unresolved = [];
   const lines = (o.order_items || []).map(i => {
-    const m = /^(.*?) \((.*)\)$/.exec(i.item_name);
-    const name = m ? m[1] : i.item_name;
-    const option = m ? m[2] : null;
-    const menuItem = state.menu.find(x => x.name === name);
-    return { id: menuItem?.id || i.menu_item_id, name, option,
-             price: Number(i.unit_price), qty: i.qty };
-  }).filter(l => l.id);
-  const picker = itemPicker(lines);
-  form.querySelector('.edit-picker-mount').appendChild(picker.el);
+    const m = state.menu.find(x => x.id === i.menu_item_id);
+    if (!m) { unresolved.push(i.item_name); return null; }
+    const opts = Array.isArray(m.options) ? m.options : [];
+    let option = null;
+    for (let k = 0; k < opts.length; k++) {
+      const label = typeof opts[k] === 'string' ? opts[k] : opts[k].label;
+      if (i.item_name === m.name + ' (' + label + ')') { option = label; break; }
+    }
+    // Has options, but none of them rebuilds the stored name — re-sending it
+    // would be rejected, so don't pretend we can edit the items on this order.
+    if (!option && opts.length && i.item_name !== m.name) {
+      unresolved.push(i.item_name);
+      return null;
+    }
+    return { id: m.id, name: m.name, option, price: Number(i.unit_price), qty: i.qty };
+  }).filter(Boolean);
+
+  // Everything except the items stays editable when a line can't be rebuilt —
+  // the RPC takes a null item list to mean "leave them alone". Rio's actual
+  // need (fixing the payment method) works either way.
+  const itemsEditable = unresolved.length === 0;
+  let picker = null;
+  if (itemsEditable) {
+    picker = itemPicker(lines);
+    form.querySelector('.edit-picker-mount').appendChild(picker.el);
+  } else {
+    form.querySelector('.edit-picker-mount').innerHTML =
+      `<p class="edit-items-locked">The items on this order can’t be changed here —
+       ${esc(unresolved.join(', '))} ${unresolved.length > 1 ? 'are' : 'is'} no longer
+       on the menu in the same form. Everything else below can still be edited, and
+       the items stay exactly as they are.</p>`;
+  }
 
   const locRadios = form.querySelectorAll(`input[name="eloc-${o.id}"]`);
   locRadios.forEach(r => r.addEventListener('change', () => {
@@ -767,13 +806,19 @@ function editOrderForm(o, close) {
     form.querySelector('.edit-room').classList.toggle('hidden', dining);
   }));
 
+  form.querySelectorAll(`input[name="epay-${o.id}"]`).forEach(r =>
+    r.addEventListener('change', () => {
+      const card = form.querySelector(`input[name="epay-${o.id}"]:checked`).value === 'card';
+      form.querySelector('.edit-ref-field').classList.toggle('hidden', !card);
+    }));
+
   form.querySelector('.edit-cancel').onclick = close;
 
   form.querySelector('.edit-save').onclick = async () => {
     const btn = form.querySelector('.edit-save');
     const reason = form.querySelector('.edit-reason').value.trim();
     if (!reason) { toast('Please say why you are changing it.'); return; }
-    if (!picker.size()) { toast('An order needs at least one item.'); return; }
+    if (picker && !picker.size()) { toast('An order needs at least one item.'); return; }
     const dining = form.querySelector(`input[name="eloc-${o.id}"]:checked`).value === 'dining';
 
     btn.disabled = true;
@@ -787,19 +832,38 @@ function editOrderForm(o, close) {
       p_table_label: form.querySelector('.edit-table').value.trim() || null,
       p_is_dining_in: dining,
       p_room_name: dining ? null : form.querySelector('.edit-room select').value,
-      p_items: picker.items(),
+      p_items: picker ? picker.items() : null,   // null = leave the items alone
     });
     btn.disabled = false;
     btn.textContent = 'Save changes';
 
     if (error) {
-      console.error(error);
-      toast(error.message?.includes('admin')
-        ? 'Only an admin can edit an order.'
+      // Say WHICH thing went wrong. A blanket "try again" told Rio nothing and
+      // told me nothing either — it hid a real bug for a day.
+      console.error('edit_order failed', error);
+      const m = error.message || '';
+      toast(
+        m.includes('only an admin') ? 'Only an admin can edit an order.'
+        : m.includes('not authorised') ? 'Your login is no longer active — sign out and back in.'
+        : m.includes('a reason is required') ? 'Please say why you are changing it.'
+        : m.includes('item') ? "One of the items doesn't match the menu any more — tell John, don't retry."
+        : m.includes('room required') ? 'Pick which room this was for.'
         : 'Could not save that change — try again.');
       return;
     }
-    if (data?.unchanged) { toast('Nothing was different — no change recorded.'); close(); return; }
+    // The reference isn't part of edit_order — it's the same staff-authenticated
+    // column the card's own field writes, so it goes the same way.
+    const pay = form.querySelector(`input[name="epay-${o.id}"]:checked`).value;
+    const ref = pay === 'card' ? (form.querySelector('.edit-ref').value.trim() || null) : null;
+    if (ref !== (o.payment_ref || null)) {
+      const { error: refErr } = await db.from('orders')
+        .update({ payment_ref: ref }).eq('id', o.id).select('id');
+      if (refErr) { console.error('payment_ref update failed', refErr); toast('Saved, but the reference number did not save.'); }
+    }
+
+    if (data?.unchanged && ref === (o.payment_ref || null)) {
+      toast('Nothing was different — no change recorded.'); close(); return;
+    }
     toast(data.review === 'pending'
       ? 'Saved. Lexi will see it for approval.'
       : 'Saved.');
