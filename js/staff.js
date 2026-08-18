@@ -1,4 +1,9 @@
 // Tanawin Menu — staff dashboard logic.
+//
+// This page is left open for hours at a time, which is why js/update-check.js
+// rides alongside it: without that, a shift can run all day on the build it
+// happened to load at 7am. That check hashes this file among others, so any
+// change here — including this comment — is what a stale dashboard notices.
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
