@@ -55,8 +55,10 @@ body {
 
 .cat-nav {
   position: sticky;
-  /* 0 normally; pushed down when the back-to-Concierge bar is present */
-  top: var(--concierge-bar-h, 0px);
+  /* 0 normally; pushed down when the back-to-Concierge bar is present, and
+     again when the "Update available" banner is showing — the contract says
+     that banner must not cover primary actions, and this is one. */
+  top: calc(var(--concierge-bar-h, 0px) + var(--tw-update-h, 0px));
   z-index: 20;
   display: flex;
   gap: 8px;

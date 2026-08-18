@@ -120,7 +120,9 @@
 .staff-tabs {
   display: flex;
   position: sticky;
-  top: 0;
+  /* Pushed down while the "Update available" banner is showing, so the banner
+     never sits on top of the tab bar. */
+  top: var(--tw-update-h, 0px);
   z-index: 20;
   background: var(--cream);
   border-bottom: 1px solid var(--line);
