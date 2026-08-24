@@ -63,6 +63,10 @@ async function showApp(user) {
   $('settingsTab').classList.toggle('hidden', !isAdmin);
   $('staffTab').classList.toggle('hidden', !isAdmin);
   $('olderToggle').classList.toggle('hidden', !isAdmin);   // back-editing is an admin job
+  // Excel is admins only (Lexi + Rio). One workbook holds every order total,
+  // so it is a revenue report in all but name.
+  $('exportToggle').classList.toggle('hidden', !isAdmin);
+  if (!isAdmin) $('exportPanel').classList.add('hidden');
   // Archive is open to admins — Rio does the back-correction work and the month
   // browser is how you find an old order. The month's MONEY is a separate
   // question and is nulled server-side for non-owners (db/032), not hidden here.
@@ -1211,6 +1215,9 @@ $('exportToggle').onclick = () => {
 };
 
 $('exportBtn').onclick = async () => {
+  // Checked again here, not just on the button's visibility: a panel left open
+  // across a role change, or a stale DOM, shouldn't still produce a workbook.
+  if (currentRole !== 'admin') { toast('Only Lexi and Rio can download the spreadsheet.'); return; }
   const from = $('exportFrom').value, to = $('exportTo').value;
   if (!from || !to) { toast('Pick both dates.'); return; }
   const btn = $('exportBtn');
