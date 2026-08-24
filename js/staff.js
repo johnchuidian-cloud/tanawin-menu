@@ -63,8 +63,10 @@ async function showApp(user) {
   $('settingsTab').classList.toggle('hidden', !isAdmin);
   $('staffTab').classList.toggle('hidden', !isAdmin);
   $('olderToggle').classList.toggle('hidden', !isAdmin);   // back-editing is an admin job
-  // Archive is owner-only — set after the is_prime lookup above, not from isAdmin.
-  $('archiveTab').classList.toggle('hidden', !currentIsPrime);
+  // Archive is open to admins — Rio does the back-correction work and the month
+  // browser is how you find an old order. The month's MONEY is a separate
+  // question and is nulled server-side for non-owners (db/032), not hidden here.
+  $('archiveTab').classList.toggle('hidden', !isAdmin);
   const hubLink = $('hubLink');
   hubLink.classList.remove('hidden');
   // admins get the full hub (incl. Payroll); staff get the staff launcher
@@ -1841,19 +1843,28 @@ async function loadArchive() {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'archive-month';
+    // m.net is null unless the caller is the owner — the server decides that,
+    // this only chooses what to draw. Non-owners get the order count as the
+    // headline instead of a blank space where money would be.
+    const money = m.net !== null && m.net !== undefined;
     row.innerHTML = `
       <div class="archive-month-top">
         <strong>${esc(monthLabel(m.month))}</strong>
-        <span class="archive-net">${peso(m.net)}</span>
+        <span class="archive-net">${money ? peso(m.net) : `${m.n} order${m.n === 1 ? '' : 's'}`}</span>
       </div>
       <div class="archive-month-sub">
-        ${m.n} order${m.n === 1 ? '' : 's'}${m.cancelled ? ` · ${m.cancelled} cancelled` : ''}
-        · ${m.dining} dining, ${m.room_service} to rooms
+        ${[
+          // The count is the headline when there's no money to show, so don't
+          // repeat it here.
+          money ? `${m.n} order${m.n === 1 ? '' : 's'}` : null,
+          m.cancelled ? `${m.cancelled} cancelled` : null,
+          `${m.dining} dining, ${m.room_service} to rooms`,
+        ].filter(Boolean).join(' · ')}
       </div>
       <div class="archive-month-sub">
         ${[['Cash', m.pay_cash], ['GCash', m.pay_gcash], ['Card', m.pay_card], ['To room', m.pay_room]]
           .filter(([, c]) => c > 0).map(([l, c]) => `${l} ${c}`).join(' · ') || '—'}
-        ${Number(m.discounts) > 0 ? ` · ${peso(m.discounts)} discounts` : ''}
+        ${money && Number(m.discounts) > 0 ? ` · ${peso(m.discounts)} discounts` : ''}
       </div>`;
     row.onclick = () => openArchiveMonth(m);
     wrap.appendChild(row);
@@ -1866,13 +1877,19 @@ async function openArchiveMonth(m) {
   $('archiveMonths').classList.add('hidden');
   $('archiveDrill').classList.remove('hidden');
   $('archiveMonthTitle').textContent = monthLabel(m.month);
-  // Money here is stated the same way the RPC computes it: cancelled orders
-  // are counted but are not revenue.
+  // Money is stated the same way the RPC computes it: cancelled orders are
+  // counted but are not revenue. Non-owners get counts only — the money
+  // columns arrive null, so there is nothing here to reveal.
+  const money = m.net !== null && m.net !== undefined;
   $('archiveMonthStats').innerHTML = `
-    <span><b>${peso(m.gross)}</b> gross</span>
+    ${money ? `<span><b>${peso(m.gross)}</b> gross</span>
     <span><b>${peso(m.discounts)}</b> discounts</span>
-    <span><b>${peso(m.net)}</b> net</span>
-    <span>${m.n} order${m.n === 1 ? '' : 's'}${m.cancelled ? `, ${m.cancelled} cancelled (not counted)` : ''}</span>`;
+    <span><b>${peso(m.net)}</b> net</span>` : ''}
+    <span><b>${m.n}</b> order${m.n === 1 ? '' : 's'}${m.cancelled ? `, ${m.cancelled} cancelled${money ? ' (not counted)' : ''}` : ''}</span>
+    <span>${m.dining} dining · ${m.room_service} to rooms</span>`;
+  // The workbook carries every total, so the one-tap month export stays with
+  // the owner. The general Excel panel is untouched.
+  $('archiveExportBtn').classList.toggle('hidden', !currentIsPrime);
   $('archiveOrders').innerHTML = '';
   await loadArchivePage();
 }
