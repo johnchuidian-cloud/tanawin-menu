@@ -21,6 +21,7 @@ const state = {
   categories: CATEGORIES, // replaced by the categories table on load
   editingId: null,        // menu item being edited (null = new)
   dateRange: null,        // {from, to} = showing past orders instead of recent
+  windowTotal: null,      // true count for that window, so the banner can't lie
   pendingPhoto: null,     // File chosen in the edit sheet
   photoRemoved: false,
   channel: null,
@@ -62,6 +63,8 @@ async function showApp(user) {
   $('settingsTab').classList.toggle('hidden', !isAdmin);
   $('staffTab').classList.toggle('hidden', !isAdmin);
   $('olderToggle').classList.toggle('hidden', !isAdmin);   // back-editing is an admin job
+  // Archive is owner-only — set after the is_prime lookup above, not from isAdmin.
+  $('archiveTab').classList.toggle('hidden', !currentIsPrime);
   const hubLink = $('hubLink');
   hubLink.classList.remove('hidden');
   // admins get the full hub (incl. Payroll); staff get the staff launcher
@@ -153,35 +156,84 @@ $('logoutBtn').onclick = async () => {
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-    ['orders', 'menu', 'rooms', 'staff', 'settings'].forEach(t =>
+    ['orders', 'menu', 'rooms', 'staff', 'settings', 'archive'].forEach(t =>
       $(`tab-${t}`).classList.toggle('hidden', t !== btn.dataset.tab));
+    if (btn.dataset.tab === 'archive') loadArchive();
   };
 });
 
 // ── Orders: load, realtime, render ──────────────────────────────────
 
+// PH is UTC+8 all year with no DST, so a fixed offset is both correct and
+// simpler than Date arithmetic — and it matches how the month aggregate cuts
+// months in SQL. `to` is inclusive, so the upper bound is the next day's
+// midnight. Using local-midnight-to-ISO instead would file orders under the
+// wrong day for anyone whose device is not on Manila time.
+const PH = '+08:00';
+const phStart = d => `${d}T00:00:00${PH}`;
+const phDayAfter = d => {
+  const [y, m, day] = d.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, day + 1));
+  return `${next.toISOString().slice(0, 10)}T00:00:00${PH}`;
+};
+
+// PostgREST caps a single response at 1000 rows and returns the short page
+// with no error and no flag — the export was relying on that cap without
+// knowing it, which is how a workbook used for money can come out incomplete
+// and look finished. Anything that has to be COMPLETE pages until a short
+// page comes back. `build` must return a fresh query each call: a PostgREST
+// builder is single-use.
+async function fetchAllPages(build, pageSize = 500) {
+  const all = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await build().range(from, from + pageSize - 1);
+    if (error) throw error;
+    all.push(...data);
+    if (data.length < pageSize) return all;
+  }
+}
+
+// How many rows a filter really matches, without pulling any of them.
+async function countRows(build) {
+  const { count, error } = await build(true);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 // state.dateRange non-null = showing a past window instead of the recent feed.
 // The edit form needs unit_price to seed its picker, so it's selected here too.
+const ORDER_SELECT = '*, order_items(item_name, qty, unit_price, line_total, menu_item_id)';
+const WINDOW_CAP = 500;   // on screen only — the export is never capped
+
 async function loadOrders() {
-  let q = db.from('orders')
-    .select('*, order_items(item_name, qty, unit_price, line_total, menu_item_id)')
-    .order('created_at', { ascending: false });
+  const range = state.dateRange;
+  const build = (countOnly) => {
+    let q = db.from('orders')
+      .select(countOnly ? 'id' : ORDER_SELECT,
+              countOnly ? { count: 'exact', head: true } : undefined)
+      .order('created_at', { ascending: false });
+    if (range) {
+      q = q.gte('created_at', phStart(range.from)).lt('created_at', phDayAfter(range.to));
+    }
+    return q;
+  };
 
-  if (state.dateRange) {
-    const end = new Date(state.dateRange.to + 'T00:00:00');
-    end.setDate(end.getDate() + 1);          // 'to' is inclusive
-    q = q.gte('created_at', new Date(state.dateRange.from + 'T00:00:00').toISOString())
-         .lt('created_at', end.toISOString())
-         .limit(500);
-  } else {
-    q = q.limit(100);
+  try {
+    // The window still caps — a month of orders rendered as cards is a lot of
+    // DOM — but it now knows the true total and says so, instead of reporting
+    // the cap as if it were the answer.
+    const data = range
+      ? (await build().limit(WINDOW_CAP))
+      : (await build().limit(100));
+    if (data.error) throw data.error;
+    state.orders.clear();
+    data.data.forEach(o => state.orders.set(o.id, o));
+    state.windowTotal = range ? await countRows(build) : null;
+    renderOrders();
+  } catch (err) {
+    toast('Could not load orders.');
+    console.error(err);
   }
-
-  const { data, error } = await q;
-  if (error) { toast('Could not load orders.'); console.error(error); return; }
-  state.orders.clear();
-  data.forEach(o => state.orders.set(o.id, o));
-  renderOrders();
 }
 
 // ── Reaching past orders ────────────────────────────────────────────
@@ -212,13 +264,25 @@ $('olderLoadBtn').onclick = async () => {
   await loadOrders();
   $('olderPanel').classList.add('hidden');
   $('olderBanner').classList.remove('hidden');
-  $('olderBannerText').textContent = `Showing ${from} to ${to} — ${state.orders.size} order${state.orders.size === 1 ? '' : 's'}`;
+  showWindowBanner(`${from} to ${to}`);
   // Old orders are finished ones, so land on the filter that shows them.
   document.querySelector('[data-filter="done"]')?.click();
 };
 
+// Says what is on screen AND what exists. The old version printed
+// `state.orders.size`, which is the cap when the cap is hit — a number that
+// looks like a total and isn't.
+function showWindowBanner(label) {
+  const shown = state.orders.size;
+  const total = state.windowTotal;
+  $('olderBannerText').textContent = (total != null && total > shown)
+    ? `Showing the first ${shown} of ${total} orders · ${label} — narrow the dates to see the rest`
+    : `Showing ${shown} order${shown === 1 ? '' : 's'} · ${label}`;
+}
+
 $('olderClearBtn').onclick = async () => {
   state.dateRange = null;
+  state.windowTotal = null;
   $('olderBanner').classList.add('hidden');
   await loadOrders();
   document.querySelector('[data-filter="active"]')?.click();
@@ -1151,16 +1215,28 @@ $('exportBtn').onclick = async () => {
   btn.disabled = true;
   try {
     await loadXlsx();
-    // 'to' is inclusive: query < the following midnight (local time)
-    const end = new Date(to + 'T00:00:00');
-    end.setDate(end.getDate() + 1);
-    const { data, error } = await db.from('orders')
+    // Paged, not one open-ended query. Without a .limit() this inherited
+    // PostgREST's 1000-row default and would have produced a workbook that
+    // silently stopped — the worst possible failure for the sheet the money
+    // is reconciled against.
+    const data = await fetchAllPages(() => db.from('orders')
       .select('*, order_items(item_name, qty, unit_price, line_total)')
-      .gte('created_at', new Date(from + 'T00:00:00').toISOString())
-      .lt('created_at', end.toISOString())
-      .order('created_at');
-    if (error) throw error;
+      .gte('created_at', phStart(from))
+      .lt('created_at', phDayAfter(to))
+      .order('created_at'));
     if (!data.length) { toast('No orders in that date range.'); return; }
+
+    // Cross-check against the database's own count. If these ever disagree,
+    // the export is wrong and saying so beats shipping a tidy short file.
+    const expected = await countRows(() => db.from('orders')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', phStart(from))
+      .lt('created_at', phDayAfter(to)));
+    if (expected !== data.length) {
+      console.error('export row mismatch', { fetched: data.length, expected });
+      toast(`Export stopped: got ${data.length} of ${expected} orders. Tell John.`);
+      return;
+    }
 
     const dt = iso => { const d = new Date(iso); return {
       date: d.toLocaleDateString('en-PH'), time: d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) }; };
@@ -1708,6 +1784,131 @@ function resetPaperForm() {
   $('paperRoomField').classList.add('hidden');
   $('paperSignBlock').classList.add('hidden');
 }
+
+// ── Archive: orders by month (owner only) ───────────────────────────
+// Two rules shape this, both learned from what the older-orders window and
+// the export got wrong:
+//   1. Counts and money come from orders_months() — one row per month,
+//      aggregated in SQL. Never "select everything and count in JS": that is
+//      the shape that silently truncates and then reports a wrong total with
+//      no error to notice.
+//   2. A month's own orders are paged with .range(), and the header says how
+//      many of how many. A page that stops early without saying so is worse
+//      than one that makes you tap.
+
+const ARCHIVE_PAGE = 200;
+let archiveMonth = null;    // the row from orders_months() being read
+let archiveOffset = 0;
+
+// 'YYYY-MM' → 'August 2026'. Day 1 at NOON: no timezone can drag noon into a
+// different month the way midnight can.
+function monthLabel(m) {
+  const [y, mo] = m.split('-').map(Number);
+  return new Date(y, mo - 1, 1, 12).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+}
+
+// Fixed +08:00, matching how the SQL cuts months. December rolls into the
+// next January rather than month 13.
+function monthRange(m) {
+  const [y, mo] = m.split('-').map(Number);
+  const next = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+  return { from: `${m}-01T00:00:00${PH}`, to: `${next}-01T00:00:00${PH}` };
+}
+
+// Last calendar day of the month, as a local date string for the export inputs.
+function monthLastDay(m) {
+  const [y, mo] = m.split('-').map(Number);
+  const last = new Date(y, mo, 0);
+  return `${y}-${String(mo).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+}
+
+async function loadArchive() {
+  const wrap = $('archiveMonths');
+  $('archiveDrill').classList.add('hidden');
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = '<p class="archive-empty">Loading…</p>';
+
+  const { data, error } = await db.rpc('orders_months');
+  if (error) {
+    console.error('orders_months failed', error);
+    wrap.innerHTML = '<p class="archive-empty">Could not load the archive.</p>';
+    return;
+  }
+  if (!data.length) { wrap.innerHTML = '<p class="archive-empty">No orders yet.</p>'; return; }
+
+  wrap.innerHTML = '';
+  data.forEach(m => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'archive-month';
+    row.innerHTML = `
+      <div class="archive-month-top">
+        <strong>${esc(monthLabel(m.month))}</strong>
+        <span class="archive-net">${peso(m.net)}</span>
+      </div>
+      <div class="archive-month-sub">
+        ${m.n} order${m.n === 1 ? '' : 's'}${m.cancelled ? ` · ${m.cancelled} cancelled` : ''}
+        · ${m.dining} dining, ${m.room_service} to rooms
+      </div>
+      <div class="archive-month-sub">
+        ${[['Cash', m.pay_cash], ['GCash', m.pay_gcash], ['Card', m.pay_card], ['To room', m.pay_room]]
+          .filter(([, c]) => c > 0).map(([l, c]) => `${l} ${c}`).join(' · ') || '—'}
+        ${Number(m.discounts) > 0 ? ` · ${peso(m.discounts)} discounts` : ''}
+      </div>`;
+    row.onclick = () => openArchiveMonth(m);
+    wrap.appendChild(row);
+  });
+}
+
+async function openArchiveMonth(m) {
+  archiveMonth = m;
+  archiveOffset = 0;
+  $('archiveMonths').classList.add('hidden');
+  $('archiveDrill').classList.remove('hidden');
+  $('archiveMonthTitle').textContent = monthLabel(m.month);
+  // Money here is stated the same way the RPC computes it: cancelled orders
+  // are counted but are not revenue.
+  $('archiveMonthStats').innerHTML = `
+    <span><b>${peso(m.gross)}</b> gross</span>
+    <span><b>${peso(m.discounts)}</b> discounts</span>
+    <span><b>${peso(m.net)}</b> net</span>
+    <span>${m.n} order${m.n === 1 ? '' : 's'}${m.cancelled ? `, ${m.cancelled} cancelled (not counted)` : ''}</span>`;
+  $('archiveOrders').innerHTML = '';
+  await loadArchivePage();
+}
+
+async function loadArchivePage() {
+  const r = monthRange(archiveMonth.month);
+  const { data, error } = await db.from('orders')
+    .select(ORDER_SELECT)
+    .gte('created_at', r.from).lt('created_at', r.to)
+    .order('created_at', { ascending: false })
+    .range(archiveOffset, archiveOffset + ARCHIVE_PAGE - 1);
+  if (error) { console.error(error); toast('Could not load that month.'); return; }
+
+  const list = $('archiveOrders');
+  data.forEach(o => {
+    // Same renderer as the live feed — one order card in this app, not two.
+    state.orders.set(o.id, o);
+    list.appendChild(orderCard(o));
+  });
+  archiveOffset += data.length;
+
+  // The total is the SQL count, never data.length.
+  $('archiveShowing').textContent = `Showing ${archiveOffset} of ${archiveMonth.n}`;
+  $('archiveMore').classList.toggle('hidden', archiveOffset >= archiveMonth.n);
+}
+
+$('archiveMore').onclick = () => loadArchivePage();
+$('archiveBack').onclick = () => loadArchive();
+
+// One tap from a month to its spreadsheet: fill the export dates and fire the
+// existing export rather than building a second one.
+$('archiveExportBtn').onclick = () => {
+  $('exportFrom').value = `${archiveMonth.month}-01`;
+  $('exportTo').value = monthLastDay(archiveMonth.month);
+  $('exportBtn').click();
+};
 
 // ── Rooms: access codes ─────────────────────────────────────────────
 

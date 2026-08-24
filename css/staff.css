@@ -381,6 +381,48 @@
   margin-bottom: 10px;
 }
 
+/* ── Archive: orders by month ───────────────────────── */
+.archive-month {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.archive-month:hover { border-color: var(--terracotta); }
+.archive-month-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 16px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.archive-net { font-weight: 800; color: var(--terracotta); white-space: nowrap; }
+.archive-month-sub { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; }
+.archive-empty { color: var(--ink-soft); font-size: 14px; padding: 10px 2px; }
+.archive-title { font-size: 20px; color: var(--terracotta); margin: 4px 0 8px; }
+.archive-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: var(--cream-deep);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.archive-stats b { color: var(--ink); font-size: 14.5px; }
+.archive-showing { font-size: 12.5px; color: var(--ink-soft); margin: 12px 0 8px; }
+.archive-more { width: 100%; margin-bottom: 20px; }
+
 /* ── Paper-order entry ──────────────────────────────── */
 .chip.paper-chip { background: #EFE7DC; color: #7A5A32; }
 .paper-two-up { display: flex; gap: 10px; }

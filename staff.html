@@ -61,6 +61,10 @@
       <button class="tab-btn" data-tab="rooms">Rooms</button>
       <button class="tab-btn hidden" data-tab="staff" id="staffTab">Staff</button>
       <button class="tab-btn hidden" data-tab="settings" id="settingsTab">Settings</button>
+      <!-- Owner only — stricter than admin on purpose (Rio and Monique are
+           admins too). Gated on staff.is_prime, same flag that protects Lexi's
+           own account. -->
+      <button class="tab-btn hidden" data-tab="archive" id="archiveTab">Archive</button>
     </nav>
 
     <!-- Orders -->
@@ -232,6 +236,22 @@
         <button class="btn-primary" type="button" id="addStaffBtn">Add staff member</button>
       </div>
       <div id="staffList"></div>
+    </main>
+
+    <!-- Archive: every month of orders, newest first. Nothing is moved or
+         deleted — this is a read view over the same `orders` rows. -->
+    <main id="tab-archive" class="tab-panel hidden">
+      <div id="archiveMonths"></div>
+
+      <div id="archiveDrill" class="hidden">
+        <button type="button" class="link-btn back-link" id="archiveBack">← All months</button>
+        <h2 class="archive-title" id="archiveMonthTitle"></h2>
+        <div class="archive-stats" id="archiveMonthStats"></div>
+        <button class="btn-primary" type="button" id="archiveExportBtn">⬇ Export this month</button>
+        <p class="archive-showing" id="archiveShowing"></p>
+        <div id="archiveOrders"></div>
+        <button class="btn-secondary archive-more hidden" type="button" id="archiveMore">Load more</button>
+      </div>
     </main>
 
     <!-- Settings -->
