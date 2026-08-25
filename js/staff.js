@@ -1545,19 +1545,43 @@ $('paperToggle').onclick = () => {
   panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
 };
 
-function fillPaperRooms() {
+// Self-healing on purpose. This used to read state.rooms once and give up: if
+// loadRooms() had errored, or simply hadn't finished when the panel was opened,
+// the dropdown rendered EMPTY and looked normal — and then "To a room" failed
+// server-side with "room required unless dining in", which the catch turned
+// into "check your connection". That is how Rio lost a phoned-in room order.
+async function fillPaperRooms() {
   const sel = $('paperRoom');
-  if (sel.options.length) return;
-  (state.rooms || []).filter(r => r.kind === 'room' && r.is_active).forEach(r => {
+  const rooms = (state.rooms || []).filter(r => r.kind === 'room' && r.is_active);
+  if (sel.options.length > 1 && rooms.length) return;   // >1: the placeholder doesn't count
+
+  if (!rooms.length) {
+    // Fetch on demand rather than trusting a load that may have failed.
+    const { data, error } = await db.from('rooms').select('name, code, kind, is_active').order('created_at');
+    if (error || !data) {
+      console.error('could not load rooms for the paper form', error);
+      $('paperRoomWarn').classList.remove('hidden');
+      return;
+    }
+    state.rooms = data;
+  }
+
+  // Blank first entry so nothing is pre-selected. A populated <select> selects
+  // its first option automatically, which would let a distracted tap file a
+  // real order against whichever room happens to sort first.
+  sel.innerHTML = '<option value="">— choose a room —</option>';
+  state.rooms.filter(r => r.kind === 'room' && r.is_active).forEach(r => {
     const o = document.createElement('option');
     o.value = r.name; o.textContent = r.name;
     sel.appendChild(o);
   });
+  $('paperRoomWarn').classList.toggle('hidden', sel.options.length > 1);
 }
 
 $('paperLoc').addEventListener('change', () => {
   const room = document.querySelector('input[name="ploc"]:checked')?.value === 'room';
   $('paperRoomField').classList.toggle('hidden', !room);
+  if (room) fillPaperRooms();      // in case the first attempt came up empty
 });
 
 $('paperPay').addEventListener('change', () => {
@@ -1720,6 +1744,16 @@ $('paperSaveBtn').onclick = async () => {
   const diningIn = document.querySelector('input[name="ploc"]:checked')?.value !== 'room';
   const pay = document.querySelector('input[name="ppay"]:checked')?.value || 'cash';
   const signedName = $('paperSignedName').value.trim();
+
+  // Caught here rather than left to the server, which can only answer with a
+  // sentence the person reading it can't act on.
+  if (!diningIn && !$('paperRoom').value) {
+    await fillPaperRooms();
+    toast($('paperRoom').options.length > 1
+      ? 'Pick which room this order is for.'
+      : "The room list didn't load — check your connection and reopen this form.");
+    return;
+  }
   if (pay === 'room' && (!paperSigInk || !signedName)) {
     toast('Charging to a room needs a signature and the signer’s name.');
     return;
@@ -1763,15 +1797,32 @@ $('paperSaveBtn').onclick = async () => {
     });
     if (error) throw error;
 
+    // The order exists from here on. Anything that fails below is tidying up,
+    // and tidying up must never be reported as a failed save — that is what
+    // makes someone record the same tab twice.
     myManualOrders.add(data.order_id);
     toast(`Recorded as order #${data.order_number}.`);
-    resetPaperForm();
-    $('paperPanel').classList.add('hidden');
+    try {
+      resetPaperForm();
+      $('paperPanel').classList.add('hidden');
+    } catch (cleanupErr) {
+      console.error('paper form cleanup failed after a successful save', cleanupErr);
+    }
     loadOrders();
   } catch (err) {
-    console.error(err);
-    toast(err.message === 'not authorised'
-      ? 'Your login is no longer active — sign out and back in.'
+    // Name the actual cause. "Check your connection and try again" is advice
+    // that cannot work when the problem is a blank room dropdown, and it cost
+    // Rio a real order before anyone could tell what had gone wrong.
+    console.error('place_manual_order failed', err);
+    const m = err?.message || '';
+    toast(
+      m.includes('not authorised') ? 'Your login is no longer active — sign out and back in.'
+      : m.includes('room required') ? 'Pick which room this order is for.'
+      : m.includes('an item in the order is invalid') ? "One of the items doesn't match the menu any more — tell John."
+      : m.includes('invalid order items') ? 'Add at least one item first.'
+      : m.includes('invalid payment intent') ? 'Choose how they paid.'
+      : m.includes('future') ? "That order time is in the future — leave it blank for now."
+      : err?.__isStorageError ? "The photo or signature didn't upload — try again, or save without it."
       : 'Could not save that order. Check your connection and try again.');
   } finally {
     btn.disabled = false;
@@ -1786,7 +1837,11 @@ function resetPaperForm() {
     .forEach(id => { $(id).value = ''; });
   $('paperPhoto').value = '';
   $('paperPhotoText').textContent = '📷 Photo of the paper slip (optional)';
-  $('paperResults').innerHTML = '';
+  // NOTE: no #paperResults here. That element was static markup until the item
+  // picker was extracted into itemPicker(), which builds its own results list —
+  // clearing the old id threw on null AFTER the order had already saved, so a
+  // successful save reported "Could not save that order" and invited a retry.
+  // paperPicker.clear() above already empties the picker's own results.
   document.querySelector('input[name="served"][value="no"]').checked = true;
   document.querySelector('input[name="ploc"][value="dining"]').checked = true;
   document.querySelector('input[name="ppay"][value="cash"]').checked = true;

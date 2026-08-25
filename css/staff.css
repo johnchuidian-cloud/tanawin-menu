@@ -475,6 +475,13 @@
 .paper-qty { display: flex; align-items: center; gap: 8px; }
 .paper-qty b { min-width: 18px; text-align: center; }
 .paper-hint { font-size: 12.5px; color: var(--ink-soft); margin: 6px 0 12px; }
+.paper-room-warn {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #A03A2A;
+  margin-top: 6px;
+}
 .sig-canvas {
   width: 100%;
   height: 150px;
