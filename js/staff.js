@@ -165,6 +165,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     ['orders', 'menu', 'rooms', 'staff', 'settings', 'archive'].forEach(t =>
       $(`tab-${t}`).classList.toggle('hidden', t !== btn.dataset.tab));
     if (btn.dataset.tab === 'archive') loadArchive();
+    else releaseArchiveOrders();   // don't leave a browsed month in the live feed
   };
 });
 
@@ -217,7 +218,9 @@ async function loadOrders() {
     let q = db.from('orders')
       .select(countOnly ? 'id' : ORDER_SELECT,
               countOnly ? { count: 'exact', head: true } : undefined)
-      .order('created_at', { ascending: false });
+      // Tiebreaker so "the first 500" is a stable set rather than a different
+      // 500 each time the same window is loaded.
+      .order('created_at', { ascending: false }).order('id', { ascending: false });
     if (range) {
       q = q.gte('created_at', phStart(range.from)).lt('created_at', phDayAfter(range.to));
     }
@@ -1228,11 +1231,16 @@ $('exportBtn').onclick = async () => {
     // PostgREST's 1000-row default and would have produced a workbook that
     // silently stopped — the worst possible failure for the sheet the money
     // is reconciled against.
+    // .order('id') is not decoration. Paging with .range() over a non-unique
+    // sort key has no defined order among tied rows, so a page boundary landing
+    // inside a tie can repeat a row or drop one. Back-dated orders share a
+    // created_at to the second — #67-#71 all sit on 2026-08-23 17:30:00 — so
+    // this table genuinely has ties, and this is the money export.
     const data = await fetchAllPages(() => db.from('orders')
       .select('*, order_items(item_name, qty, unit_price, line_total)')
       .gte('created_at', phStart(from))
       .lt('created_at', phDayAfter(to))
-      .order('created_at'));
+      .order('created_at').order('id'));
     if (!data.length) { toast('No orders in that date range.'); return; }
 
     // Cross-check against the database's own count. If these ever disagree,
@@ -1864,6 +1872,19 @@ const ARCHIVE_PAGE = 200;
 let archiveMonth = null;    // the row from orders_months() being read
 let archiveOffset = 0;
 
+// Archive orders have to go into state.orders, because that is where the card's
+// own buttons look themselves up. But state.orders is ALSO the live feed, so
+// browsing March would otherwise leave March sitting in the Orders tab the next
+// time anything re-rendered it. Track what we put there and take it back out.
+const archiveInjected = new Set();
+
+function releaseArchiveOrders() {
+  if (!archiveInjected.size) return;
+  archiveInjected.forEach(id => state.orders.delete(id));
+  archiveInjected.clear();
+  renderOrders();
+}
+
 // 'YYYY-MM' → 'August 2026'. Day 1 at NOON: no timezone can drag noon into a
 // different month the way midnight can.
 function monthLabel(m) {
@@ -1887,6 +1908,7 @@ function monthLastDay(m) {
 }
 
 async function loadArchive() {
+  releaseArchiveOrders();          // leaving a month's drill-down
   const wrap = $('archiveMonths');
   $('archiveDrill').classList.add('hidden');
   wrap.classList.remove('hidden');
@@ -1961,13 +1983,18 @@ async function loadArchivePage() {
   const { data, error } = await db.from('orders')
     .select(ORDER_SELECT)
     .gte('created_at', r.from).lt('created_at', r.to)
-    .order('created_at', { ascending: false })
+    // Unique tiebreaker, for the same reason the export has one: paging over
+    // a non-unique sort key can repeat or skip rows at a page boundary.
+    .order('created_at', { ascending: false }).order('id', { ascending: false })
     .range(archiveOffset, archiveOffset + ARCHIVE_PAGE - 1);
   if (error) { console.error(error); toast('Could not load that month.'); return; }
 
   const list = $('archiveOrders');
   data.forEach(o => {
     // Same renderer as the live feed — one order card in this app, not two.
+    // Only note the ones the feed didn't already hold, so releasing them later
+    // can't evict a live order.
+    if (!state.orders.has(o.id)) archiveInjected.add(o.id);
     state.orders.set(o.id, o);
     list.appendChild(orderCard(o));
   });
