@@ -283,6 +283,9 @@
   display: block;
 }
 .request-thumb.zoomed { max-width: 100%; cursor: zoom-out; }
+/* Stand-in for a photo that hasn't been fetched yet. Same footprint as the
+   thumbnail it becomes, so the card doesn't jump when it loads. */
+.request-photo-btn { margin-bottom: 8px; }
 .type-row { margin-top: -4px; }
 .cat-pill.small { font-size: 13px; padding: 5px 11px; }
 

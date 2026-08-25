@@ -25,6 +25,10 @@ const state = {
   pendingPhoto: null,     // File chosen in the edit sheet
   photoRemoved: false,
   channel: null,
+  // Guest problem-report photos are NOT held on the request rows in state —
+  // see loadRequests() for why. These two are the only place they live.
+  requestPhotos: new Map(),   // id -> data URL, once someone has asked to see it
+  requestHasPhoto: new Set(), // id -> we know a photo exists, without holding it
 };
 
 // Options may be plain strings ("Hot") or priced ({label:"for 2", price:479}).
@@ -299,16 +303,103 @@ $('olderClearBtn').onclick = async () => {
 
 // Guest service requests from the Concierge app (shared table, suite
 // connection #7). They ride the SAME feed as food orders.
+//
+// Every column EXCEPT photo_data, deliberately. Concierge stores problem-report
+// photos inline in the row as data URLs — up to 380KB each — because anonymous
+// guests must never need storage-write access. That is right for them and wrong
+// for us: a `select('*')` over this window drags every photo in it down to a
+// staff phone on each dashboard load and each refresh. Empty today (6 rows,
+// 1.4KB, no photos — measured), roughly 7MB per load once a fifth of a hundred
+// rows carry one. Finance solved the same shape the same way: bootstrap without
+// the blob, fetch the one photo a person actually asks to see.
+//
+// The cost of naming columns is that a column Concierge adds later is invisible
+// here until it is added to this list.
+const REQUEST_SELECT =
+  'id, room_name, kind, items, note, status, out_of_hours, created_at, ' +
+  'acknowledged_at, acknowledged_by, done_at, escalated_at';
+
 async function loadRequests() {
   const { data, error } = await db
     .from('concierge_requests')
-    .select('*')
+    .select(REQUEST_SELECT)
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) { console.error('could not load guest requests', error); return; }
   state.requests.clear();
+  state.requestHasPhoto.clear();
   data.forEach(r => state.requests.set(r.id, r));
+
+  // Which of them have a photo, without fetching one. Ids only — 100 uuids is
+  // about 4KB. Photo-carrying rows are a subset of all rows, so anything with a
+  // photo inside the window above is inside this window too.
+  const { data: withPhoto, error: photoErr } = await db
+    .from('concierge_requests')
+    .select('id')
+    .not('photo_data', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (photoErr) {
+    // Not fatal — the cards still render, they just won't offer the photo.
+    console.error('could not check which requests have photos', photoErr);
+  } else {
+    withPhoto.forEach(r => state.requestHasPhoto.add(r.id));
+  }
   renderOrders();
+}
+
+// Realtime hands us the whole row, blob included. Take the photo out and put it
+// in the cache, so a request row in state never carries one however it arrived.
+function stashRequestPhoto(row) {
+  if (!row || !('photo_data' in row)) return row;
+  const { photo_data, ...rest } = row;
+  if (photo_data) {
+    state.requestPhotos.set(row.id, photo_data);
+    state.requestHasPhoto.add(row.id);
+  }
+  return rest;
+}
+
+// Fetches one request's photo on demand and shows it. Kept out of the card
+// renderer so a re-render never re-fetches what is already cached.
+async function showRequestPhoto(id, mount, btn) {
+  const cached = state.requestPhotos.get(id);
+  if (cached) return mountRequestPhoto(cached, mount, btn);
+  btn.disabled = true;
+  btn.textContent = 'Loading photo…';
+  const { data, error } = await db
+    .from('concierge_requests')
+    .select('photo_data')
+    .eq('id', id)
+    .single();
+  btn.disabled = false;
+  if (error) {
+    console.error('could not load the request photo', { id, error });
+    btn.textContent = '📷 Photo — tap to view';
+    toast(`Could not load that photo: ${error.message}`);
+    return;
+  }
+  if (!data?.photo_data) {
+    // The row is here but the blob is gone — which is what stripping photos off
+    // old requests will look like, if that lands.
+    state.requestHasPhoto.delete(id);
+    btn.remove();
+    toast('That photo is no longer stored.');
+    return;
+  }
+  state.requestPhotos.set(id, data.photo_data);
+  mountRequestPhoto(data.photo_data, mount, btn);
+}
+
+function mountRequestPhoto(dataUrl, mount, btn) {
+  // a data URL straight from the guest's phone — never inject it as markup
+  const img = document.createElement('img');
+  img.className = 'request-thumb';
+  img.src = dataUrl;
+  img.alt = 'Photo from the guest';
+  img.onclick = () => img.classList.toggle('zoomed');
+  btn?.remove();
+  mount.appendChild(img);
 }
 
 function subscribeOrders() {
@@ -356,7 +447,7 @@ function subscribeOrders() {
     })
     // A guest request should land as loudly as a food order.
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'concierge_requests' }, payload => {
-      state.requests.set(payload.new.id, payload.new);
+      state.requests.set(payload.new.id, stashRequestPhoto(payload.new));
       renderOrders();
       chime();
       startNagging();
@@ -365,7 +456,8 @@ function subscribeOrders() {
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'concierge_requests' }, payload => {
       // another device acted on it — keep every dashboard in step
-      state.requests.set(payload.new.id, { ...state.requests.get(payload.new.id), ...payload.new });
+      state.requests.set(payload.new.id,
+        { ...state.requests.get(payload.new.id), ...stashRequestPhoto(payload.new) });
       renderOrders();
     })
     .subscribe();
@@ -668,14 +760,16 @@ function requestCard(r) {
     <div class="request-photo"></div>
     <div class="order-actions"></div>`;
 
-  if (r.photo_data) {
-    // a data URL straight from the guest's phone — never inject it as markup
-    const img = document.createElement('img');
-    img.className = 'request-thumb';
-    img.src = r.photo_data;
-    img.alt = 'Photo from the guest';
-    img.onclick = () => img.classList.toggle('zoomed');
-    card.querySelector('.request-photo').appendChild(img);
+  const photoMount = card.querySelector('.request-photo');
+  const cachedPhoto = state.requestPhotos.get(r.id);
+  if (cachedPhoto) {
+    mountRequestPhoto(cachedPhoto, photoMount, null);
+  } else if (state.requestHasPhoto.has(r.id)) {
+    const btn = document.createElement('button');
+    btn.className = 'btn-secondary request-photo-btn';
+    btn.textContent = '📷 Photo — tap to view';
+    btn.onclick = () => showRequestPhoto(r.id, photoMount, btn);
+    photoMount.appendChild(btn);
   }
 
   const actions = card.querySelector('.order-actions');
@@ -1233,9 +1327,9 @@ $('exportBtn').onclick = async () => {
     // is reconciled against.
     // .order('id') is not decoration. Paging with .range() over a non-unique
     // sort key has no defined order among tied rows, so a page boundary landing
-    // inside a tie can repeat a row or drop one. Back-dated orders share a
-    // created_at to the second — #67-#71 all sit on 2026-08-23 17:30:00 — so
-    // this table genuinely has ties, and this is the money export.
+    // inside a tie can repeat a row or drop one. Back-dated paper orders are
+    // entered with a time typed to the minute, so several really do share a
+    // created_at to the second, and this is the money export.
     const data = await fetchAllPages(() => db.from('orders')
       .select('*, order_items(item_name, qty, unit_price, line_total)')
       .gte('created_at', phStart(from))
