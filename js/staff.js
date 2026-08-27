@@ -71,10 +71,18 @@ async function showApp(user) {
   // so it is a revenue report in all but name.
   $('exportToggle').classList.toggle('hidden', !isAdmin);
   if (!isAdmin) $('exportPanel').classList.add('hidden');
-  // Archive is open to admins — Rio does the back-correction work and the month
-  // browser is how you find an old order. The month's MONEY is a separate
-  // question and is nulled server-side for non-owners (db/032), not hidden here.
-  $('archiveTab').classList.toggle('hidden', !isAdmin);
+  // Archive is open to EVERY active staff member, but its two halves are not
+  // the same thing. Order months stay admins only — Rio does the
+  // back-correction work, and the month's MONEY is nulled server-side for
+  // non-owners (db/032). Guest-request months are for everyone: there is no
+  // money in a towel request, and the people who work that queue are the ones
+  // who need to look back at it (Lexi's call, relayed via Concierge). A plain
+  // staff member therefore opens the tab straight into requests and never sees
+  // the switch — orders_months() would hand them an empty list anyway, which
+  // reads as "no orders" rather than "not for you".
+  $('archiveTab').classList.remove('hidden');
+  $('archiveKindRow').classList.toggle('hidden', !isAdmin);
+  archiveKind = isAdmin ? 'orders' : 'requests';
   const hubLink = $('hubLink');
   hubLink.classList.remove('hidden');
   // admins get the full hub (incl. Payroll); staff get the staff launcher
@@ -725,7 +733,7 @@ const REQUEST_KINDS = {
   plate_collection: { label: 'Plate collection', icon: '🍽' },
 };
 
-function requestCard(r) {
+function requestCard(r, readOnly) {
   const card = document.createElement('article');
   card.className = `order-card request-card status-${r.status}`;
   const kind = REQUEST_KINDS[r.kind] || { label: r.kind, icon: '🛎' };
@@ -771,6 +779,11 @@ function requestCard(r) {
     btn.onclick = () => showRequestPhoto(r.id, photoMount, btn);
     photoMount.appendChild(btn);
   }
+
+  // The archive draws the same card without its buttons. A request months old
+  // has nothing to correct, and a card whose actions wrote to state.requests
+  // would drag an archived row into the live queue.
+  if (readOnly) return card;
 
   const actions = card.querySelector('.order-actions');
   if (r.status === 'new') {
@@ -1963,8 +1976,11 @@ function resetPaperForm() {
 //      than one that makes you tap.
 
 const ARCHIVE_PAGE = 200;
+let archiveKind = 'orders'; // which half of the archive is on screen
 let archiveMonth = null;    // the row from orders_months() being read
 let archiveOffset = 0;
+let archiveReqMonth = null; // the row from concierge_requests_months()
+let archiveReqOffset = 0;
 
 // Archive orders have to go into state.orders, because that is where the card's
 // own buttons look themselves up. But state.orders is ALSO the live feed, so
@@ -2001,10 +2017,21 @@ function monthLastDay(m) {
   return `${y}-${String(mo).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
 }
 
+// Entry point for the tab and for both back-links: shows whichever half is
+// selected and hides the other outright, so a stale month list from the other
+// kind can never sit underneath.
 async function loadArchive() {
   releaseArchiveOrders();          // leaving a month's drill-down
-  const wrap = $('archiveMonths');
+  const requests = archiveKind === 'requests';
+  $('archiveMonths').classList.toggle('hidden', requests);
   $('archiveDrill').classList.add('hidden');
+  $('archiveReqMonths').classList.toggle('hidden', !requests);
+  $('archiveReqDrill').classList.add('hidden');
+  return requests ? loadRequestArchive() : loadOrderArchive();
+}
+
+async function loadOrderArchive() {
+  const wrap = $('archiveMonths');
   wrap.classList.remove('hidden');
   wrap.innerHTML = '<p class="archive-empty">Loading…</p>';
 
@@ -2101,6 +2128,116 @@ async function loadArchivePage() {
 
 $('archiveMore').onclick = () => loadArchivePage();
 $('archiveBack').onclick = () => loadArchive();
+
+document.querySelectorAll('.cat-pill[data-archive]').forEach(pill => {
+  pill.onclick = () => {
+    archiveKind = pill.dataset.archive;
+    document.querySelectorAll('.cat-pill[data-archive]').forEach(p =>
+      p.classList.toggle('active', p === pill));
+    loadArchive();
+  };
+});
+
+// ── Archive: guest requests by month ────────────────────────────────
+// Same two rules as the orders half: counts come from one aggregated row per
+// month, so they cannot be silently truncated, and the drill-down pages with
+// a real total in its header. Read-only on purpose — see staff.html.
+
+async function loadRequestArchive() {
+  const wrap = $('archiveReqMonths');
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = '<p class="archive-empty">Loading…</p>';
+
+  const { data, error } = await db.rpc('concierge_requests_months');
+  if (error) {
+    console.error('concierge_requests_months failed', error);
+    wrap.innerHTML = '<p class="archive-empty">Could not load the archive.</p>';
+    return;
+  }
+  if (!data.length) { wrap.innerHTML = '<p class="archive-empty">No guest requests yet.</p>'; return; }
+
+  wrap.innerHTML = '';
+  data.forEach(m => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'archive-month';
+    const kinds = [
+      ['towel_change', m.towel_change], ['bin_clearing', m.bin_clearing],
+      ['room_items', m.room_items], ['problem', m.problem],
+    ].filter(pair => pair[1] > 0)
+     .map(pair => esc((REQUEST_KINDS[pair[0]] || {}).label || pair[0]) + ' ' + pair[1]);
+    row.innerHTML = `
+      <div class="archive-month-top">
+        <strong>${esc(monthLabel(m.month))}</strong>
+        <span class="archive-net">${m.n} request${m.n === 1 ? '' : 's'}</span>
+      </div>
+      <div class="archive-month-sub">${kinds.join(' · ') || '—'}</div>
+      <div class="archive-month-sub">
+        ${[
+          m.cancelled ? `${m.cancelled} cancelled` : null,
+          // Lexi asked for this one: how often guests needed something outside
+          // staffed hours is a staffing signal, not a curiosity.
+          m.out_of_hours ? `${m.out_of_hours} outside service hours` : null,
+        ].filter(Boolean).join(' · ') || '—'}
+      </div>`;
+    row.onclick = () => openRequestArchiveMonth(m);
+    wrap.appendChild(row);
+  });
+}
+
+async function openRequestArchiveMonth(m) {
+  archiveReqMonth = m;
+  archiveReqOffset = 0;
+  $('archiveReqMonths').classList.add('hidden');
+  $('archiveReqDrill').classList.remove('hidden');
+  $('archiveReqMonthTitle').textContent = monthLabel(m.month);
+  $('archiveReqMonthStats').innerHTML = `
+    <span><b>${m.n}</b> request${m.n === 1 ? '' : 's'}${m.cancelled ? `, ${m.cancelled} cancelled` : ''}</span>
+    ${m.out_of_hours ? `<span><b>${m.out_of_hours}</b> outside service hours</span>` : ''}`;
+  $('archiveReqList').innerHTML = '';
+
+  // Which rows in this month carry a photo — ids only, because the cards must
+  // not pull the blobs themselves. Guest photo upload was removed from
+  // Concierge on 2026-08-24 and no row carries one today, so this is for the
+  // historical rows and for the day someone reverses that.
+  const r = monthRange(m.month);
+  const { data: withPhoto, error } = await db.from('concierge_requests')
+    .select('id').not('photo_data', 'is', null)
+    .gte('created_at', r.from).lt('created_at', r.to);
+  if (error) console.error('could not check which archived requests have photos', error);
+  else withPhoto.forEach(x => state.requestHasPhoto.add(x.id));
+
+  await loadRequestArchivePage();
+}
+
+async function loadRequestArchivePage() {
+  const r = monthRange(archiveReqMonth.month);
+  const { data, error } = await db.from('concierge_requests')
+    .select(REQUEST_SELECT)
+    .gte('created_at', r.from).lt('created_at', r.to)
+    // Unique tiebreaker, same reason as everywhere else here: paging over a
+    // non-unique sort key can repeat or skip a row at a page boundary.
+    .order('created_at', { ascending: false }).order('id', { ascending: false })
+    .range(archiveReqOffset, archiveReqOffset + ARCHIVE_PAGE - 1);
+  if (error) {
+    console.error('could not load that month of requests', error);
+    toast('Could not load that month: ' + error.message);
+    return;
+  }
+
+  const list = $('archiveReqList');
+  // Read-only, so these are NEVER put into state.requests: nothing to release
+  // afterwards, and no way for a browsed month to surface in the live queue.
+  data.forEach(row => list.appendChild(requestCard(row, true)));
+  archiveReqOffset += data.length;
+
+  // The total is the SQL count, never data.length.
+  $('archiveReqShowing').textContent = `Showing ${archiveReqOffset} of ${archiveReqMonth.n}`;
+  $('archiveReqMore').classList.toggle('hidden', archiveReqOffset >= archiveReqMonth.n);
+}
+
+$('archiveReqMore').onclick = () => loadRequestArchivePage();
+$('archiveReqBack').onclick = () => loadArchive();
 
 // One tap from a month to its spreadsheet: fill the export dates and fire the
 // existing export rather than building a second one.

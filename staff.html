@@ -61,9 +61,12 @@
       <button class="tab-btn" data-tab="rooms">Rooms</button>
       <button class="tab-btn hidden" data-tab="staff" id="staffTab">Staff</button>
       <button class="tab-btn hidden" data-tab="settings" id="settingsTab">Settings</button>
-      <!-- Owner only — stricter than admin on purpose (Rio and Monique are
-           admins too). Gated on staff.is_prime, same flag that protects Lexi's
-           own account. -->
+      <!-- Open to every active staff member, but what is INSIDE differs by
+           role: order months are admins only (Lexi + Rio), guest-request
+           months are for everyone. A towel request has no money in it, and
+           the people who work that queue are the ones who need to look back
+           at it. Both aggregates gate again server-side; this only decides
+           what to draw. -->
       <button class="tab-btn hidden" data-tab="archive" id="archiveTab">Archive</button>
     </nav>
 
@@ -241,9 +244,17 @@
       <div id="staffList"></div>
     </main>
 
-    <!-- Archive: every month of orders, newest first. Nothing is moved or
-         deleted — this is a read view over the same `orders` rows. -->
+    <!-- Archive: every month of orders and of guest requests, newest first.
+         Nothing is moved or deleted — a read view over the same rows. -->
     <main id="tab-archive" class="tab-panel hidden">
+      <!-- Scoped by data-archive, NOT by ".cat-pill" — the orders feed's
+           filter and type pills use data-filter and data-kind, and a looser
+           selector would collect all three. -->
+      <div class="cat-row type-row hidden" id="archiveKindRow">
+        <button class="cat-pill small active" type="button" data-archive="orders">Orders</button>
+        <button class="cat-pill small" type="button" data-archive="requests">Guest requests</button>
+      </div>
+
       <div id="archiveMonths"></div>
 
       <div id="archiveDrill" class="hidden">
@@ -254,6 +265,22 @@
         <p class="archive-showing" id="archiveShowing"></p>
         <div id="archiveOrders"></div>
         <button class="btn-secondary archive-more hidden" type="button" id="archiveMore">Load more</button>
+      </div>
+
+      <!-- Guest requests. Deliberately read-only: the archive is a read view,
+           and unlike an order there is nothing to back-correct on a towel
+           request months later. It also keeps archived rows out of
+           state.requests, so browsing March can't leave March sitting in the
+           live queue. -->
+      <div id="archiveReqMonths" class="hidden"></div>
+
+      <div id="archiveReqDrill" class="hidden">
+        <button type="button" class="link-btn back-link" id="archiveReqBack">← All months</button>
+        <h2 class="archive-title" id="archiveReqMonthTitle"></h2>
+        <div class="archive-stats" id="archiveReqMonthStats"></div>
+        <p class="archive-showing" id="archiveReqShowing"></p>
+        <div id="archiveReqList"></div>
+        <button class="btn-secondary archive-more hidden" type="button" id="archiveReqMore">Load more</button>
       </div>
     </main>
 
