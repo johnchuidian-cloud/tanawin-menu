@@ -316,10 +316,16 @@ $('olderClearBtn').onclick = async () => {
 // photos inline in the row as data URLs — up to 380KB each — because anonymous
 // guests must never need storage-write access. That is right for them and wrong
 // for us: a `select('*')` over this window drags every photo in it down to a
-// staff phone on each dashboard load and each refresh. Empty today (6 rows,
-// 1.4KB, no photos — measured), roughly 7MB per load once a fifth of a hundred
-// rows carry one. Finance solved the same shape the same way: bootstrap without
-// the blob, fetch the one photo a person actually asks to see.
+// staff phone on each dashboard load and each refresh. Finance solved the same
+// shape the same way: bootstrap without the blob, fetch the one photo a person
+// actually asks to see.
+//
+// This is no longer a GROWTH risk: Lexi had the photo upload removed from the
+// Concierge guest app on 2026-08-24 (`bea7493`), so no row can gain a photo any
+// more and none has one today. The column and the RPC parameter both stay, so
+// this keeps working for the historical rows and for the day that decision is
+// reversed. It costs nothing to leave in place — don't strip it back out on the
+// grounds that the table is empty.
 //
 // The cost of naming columns is that a column Concierge adds later is invisible
 // here until it is added to this list.
