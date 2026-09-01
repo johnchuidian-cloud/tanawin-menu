@@ -18,7 +18,14 @@
   <div class="card">
     <h1>No connection</h1>
     <p>The dashboard needs internet to load orders. Check the WiFi or mobile data, then try again.</p>
-    <a href="/staff">Try again</a>
+    <!-- Empty href = this exact URL. sw.js answers ANY failed navigation with
+         this page and respondWith leaves the address bar on the page the person
+         actually asked for, so this retries that page — the guest menu for a
+         guest, the dashboard for staff. A literal /staff here (as it briefly was)
+         sends an offline guest to the staff login. It stays a link rather than a
+         button because a button needs script, and script-src carries no
+         'unsafe-inline'; a cached page could not load an external file anyway. -->
+    <a href="">Try again</a>
   </div>
 </body>
 </html>
