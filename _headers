@@ -1,0 +1,38 @@
+# Tanawin Menu — security headers (Tier 2 of the 2026-09-01 suite work order).
+#
+# Cloudflare consumes this file as configuration: it is NOT served, so
+# /_headers returns 404 while the headers arrive on every real response.
+# A file in the repo proves nothing — verify with:
+#   curl -sI "https://tanawin-menu.tanawinbnb.workers.dev/staff?x=1" | grep -i "content-security|nosniff|frame"
+#
+# ⚠️ THE CSP IS REPORT-ONLY ON PURPOSE.
+# Report-Only logs violations to the browser console and BLOCKS NOTHING. A
+# wrong CSP breaks real screens for real people mid-service, and this app takes
+# guest orders. The plan is: ship report-only, click every screen in every role
+# watching the console, and only then rename the header to
+# Content-Security-Policy in a second deploy. Do not rename it early.
+#
+# Why each source is here — check this list before adding to it:
+#   script-src   cdn.jsdelivr.net  supabase-js, on all three pages
+#                cdn.sheetjs.com   injected on demand by the Excel export
+#                NO 'unsafe-inline': poster's inline script moved to
+#                js/poster.js and two onclick attributes were removed to keep
+#                it that way. Putting it back undoes most of this file.
+#   style-src    'unsafe-inline' is unavoidable for now — the update banner
+#                injects a <style> element and sets element.style directly,
+#                and two pages carry a <style> block.
+#   img-src      data:  guest signatures and request photos are data URLs
+#                blob:  the menu-item photo picker previews with createObjectURL
+#                supabase  the menu-images bucket and the GCash QR
+#   connect-src  supabase REST, and wss for the realtime order feed
+#   worker-src   sw.js, which serves offline.html and raises push alerts
+#
+# Not listed and deliberately so: media-src (the chime is Web Audio, not a
+# file) and font-src beyond 'self' (every font-family resolves to system UI).
+
+/*
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lkeuiquqogtevsgvaddf.supabase.co; connect-src 'self' https://lkeuiquqogtevsgvaddf.supabase.co wss://lkeuiquqogtevsgvaddf.supabase.co; worker-src 'self'; manifest-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), microphone=(), camera=()

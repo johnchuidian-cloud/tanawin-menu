@@ -88,7 +88,7 @@
 </head>
 <body>
 
-  <button class="print-btn" onclick="window.print()">🖨 Print</button>
+  <button class="print-btn" type="button" id="printBtn">🖨 Print</button>
 
   <div class="poster">
     <svg class="flower" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><g transform="translate(16 16)"><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(45)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(90)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(135)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(180)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(225)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(270)"/><path d="M0 0 C-2.7 -3 -2.4 -8.7 0 -11 2.4 -8.7 2.7 -3 0 0 Z" transform="rotate(315)"/><circle r="2.9"/></g></svg>
@@ -103,20 +103,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="js/config.js"></script>
-  <script>
-    // Captions come from settings (staff-only table). Opened from the staff
-    // dashboard the auth session carries over; without one, defaults stand.
-    const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    (async () => {
-      const { data: { session } } = await db.auth.getSession();
-      if (!session) return;
-      const { data } = await db.from('settings').select('key, value')
-        .in('key', ['qr_text_above', 'qr_text_below']);
-      (data || []).forEach(r => {
-        if (r.key === 'qr_text_above' && r.value) document.getElementById('textAbove').textContent = r.value;
-        if (r.key === 'qr_text_below' && r.value) document.getElementById('textBelow').textContent = r.value;
-      });
-    })();
-  </script>
+  <script src="js/poster.js"></script>
 </body>
 </html>
