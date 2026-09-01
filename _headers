@@ -5,12 +5,18 @@
 # A file in the repo proves nothing — verify with:
 #   curl -sI "https://tanawin-menu.tanawinbnb.workers.dev/staff?x=1" | grep -i "content-security|nosniff|frame"
 #
-# ⚠️ THE CSP IS REPORT-ONLY ON PURPOSE.
-# Report-Only logs violations to the browser console and BLOCKS NOTHING. A
-# wrong CSP breaks real screens for real people mid-service, and this app takes
-# guest orders. The plan is: ship report-only, click every screen in every role
-# watching the console, and only then rename the header to
-# Content-Security-Policy in a second deploy. Do not rename it early.
+# ⚠️ THIS CSP IS ENFORCING. A wrong source here BREAKS a real screen for real
+# people, on an app that takes guest orders. It ran as Report-Only first and was
+# flipped on 2026-09-01 only after a full sweep of the live site produced zero
+# securitypolicyviolation events: guest menu (cart, size options, bucket image,
+# signature canvas), all six staff tabs, the paper-order form, the edit-order
+# modal, the discount calculator, sheetjs loaded on demand from its CDN, service
+# worker registration, data:/blob:/bucket images, and the update banner reading
+# every asset.
+#
+# If you add anything that loads from a new origin, add its source here IN THE
+# SAME COMMIT. Violations now show up as a broken screen, not a console note —
+# and they surface on a staff phone, not on yours.
 #
 # Why each source is here — check this list before adding to it:
 #   script-src   cdn.jsdelivr.net  supabase-js, on all three pages
@@ -31,7 +37,7 @@
 # file) and font-src beyond 'self' (every font-family resolves to system UI).
 
 /*
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lkeuiquqogtevsgvaddf.supabase.co; connect-src 'self' https://lkeuiquqogtevsgvaddf.supabase.co wss://lkeuiquqogtevsgvaddf.supabase.co; worker-src 'self'; manifest-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lkeuiquqogtevsgvaddf.supabase.co; connect-src 'self' https://lkeuiquqogtevsgvaddf.supabase.co wss://lkeuiquqogtevsgvaddf.supabase.co; worker-src 'self'; manifest-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
