@@ -1,0 +1,25 @@
+# Files in this repo that must NOT be served by the live site.
+#
+# wrangler.jsonc serves the whole repo root ("./") as static assets. Before this
+# file existed (added 2026-09-17), every tracked file was publicly downloadable
+# from tanawin-menu.tanawinbnb.workers.dev — the database migrations, the Edge
+# Function source, SECRETS.md, and the .git folder itself (/.git/config and
+# /.git/HEAD both returned 200). Checked at the time: no secret VALUE was in any
+# of it or anywhere in history, and .git/config held no credentials, so this was
+# hygiene rather than a leak. Keep it that way.
+#
+# ⚠️ Never list anything the app itself loads: *.html, css/, js/, assets/,
+# sw.js, manifest.webmanifest, offline.html. A wrong line here breaks the live
+# app for guests. After ANY change to this file, deploy and curl the live site
+# with a cache-buster: app files must still return 200, and the entries below 404.
+
+.git/
+docs/
+db/
+supabase/
+scripts/
+tmp/
+*.md
+wrangler.jsonc
+.gitignore
+.assetsignore
