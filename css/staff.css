@@ -189,6 +189,10 @@
 /* Actions sit right on a wide screen and drop to their own line on a phone.
    margin-left:auto only applies while they share a line with the filters. */
 .filter-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+/* On a phone the actions can't share the Active/Done line and wrap below it.
+   Left-align them there — margin-left:auto would right-align the wrapped block
+   and leave a ragged gap on the left. */
+@media (max-width: 600px) { .filter-actions { margin-left: 0; } }
 .export-dates { display: flex; gap: 10px; flex-wrap: wrap; }
 /* min-width:0 or a date input's intrinsic width refuses to shrink and takes
    the panel wider than the screen. */

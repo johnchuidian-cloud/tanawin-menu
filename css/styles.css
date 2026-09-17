@@ -480,7 +480,20 @@ main { max-width: 640px; margin: 0 auto; padding: 4px 14px 20px; }
   margin-top: 8px;
 }
 .sig-hint { font-size: 12.5px; color: var(--ink-soft); }
-.sig-clear { color: var(--terracotta); font-size: 13.5px; }
+/* Styled here in full rather than leaning on .link-btn: that class lives in
+   staff.css, which the guest page never loads, so this button was rendering
+   with the browser's default grey chrome in front of guests. */
+.sig-clear {
+  border: none;
+  background: none;
+  padding: 4px 2px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--terracotta);
+  text-decoration: underline;
+}
 
 .gcash-panel {
   text-align: center;
