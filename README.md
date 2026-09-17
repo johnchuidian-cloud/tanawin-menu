@@ -5,6 +5,25 @@ One QR code → guest browses the menu on their phone → orders to their room o
 
 Part of the Tanawin family: **Finance** (expenses), **Kitchen** (kitchen ops), **Hub** (launcher), **Menu** (this app).
 
+## Screenshots
+
+Everything shown is made-up data. The dishes, prices, staff, rooms, access codes and orders are all invented, and the screens were rendered against an in-memory stand-in for the database rather than the live one. Captured at phone width, which is how guests and staff actually use it.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/guest-1-menu.png" width="200" alt="Guest menu"><br><sub>Guest menu</sub></td>
+    <td align="center"><img src="docs/screenshots/guest-2-cart.png" width="200" alt="Cart"><br><sub>Cart</sub></td>
+    <td align="center"><img src="docs/screenshots/guest-3-checkout.png" width="200" alt="Checkout with signature"><br><sub>Checkout and signature</sub></td>
+    <td align="center"><img src="docs/screenshots/guest-4-tracker.png" width="200" alt="Live order tracker"><br><sub>Live order tracker</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/staff-1-signin.png" width="200" alt="Staff sign-in"><br><sub>Staff sign-in</sub></td>
+    <td align="center"><img src="docs/screenshots/staff-2-orders.png" width="200" alt="Live order and request queue"><br><sub>Orders and guest requests</sub></td>
+    <td align="center"><img src="docs/screenshots/staff-3-archive.png" width="200" alt="Monthly archive"><br><sub>Monthly archive</sub></td>
+    <td align="center"><img src="docs/screenshots/staff-4-menu.png" width="200" alt="Menu editor"><br><sub>Menu editor</sub></td>
+  </tr>
+</table>
+
 ## Two surfaces, one codebase
 
 | Surface | File | Who | Auth |
