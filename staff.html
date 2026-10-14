@@ -84,7 +84,7 @@
         <!-- Actions are grouped so they wrap as a block instead of one pill at
              a time, and so the row can never push the page sideways. -->
         <span class="filter-actions">
-          <button class="cat-pill" id="paperToggle">✍ Paper order</button>
+          <button class="cat-pill" id="paperToggle">+ Place an order</button>
           <button class="cat-pill hidden" id="olderToggle">🕐 Older orders</button>
           <!-- Admins only (Lexi + Rio). The workbook carries every order total,
                which adds up to the month's revenue. -->
@@ -127,17 +127,22 @@
         <button class="btn-primary" type="button" id="exportBtn">Download .xlsx</button>
       </div>
 
-      <!-- Orders taken by hand. Sits inline on the Orders tab rather than in a
-           modal sheet: entering a big tab is a long job and staff need to keep
-           checking the paper, so it must survive scrolling and interruption. -->
+      <!-- Orders entered by staff: either placed FOR a guest (phone call, front
+           desk) and sent to the kitchen, or a paper slip typed up afterwards.
+           Sits inline on the Orders tab rather than in a modal sheet: entering a
+           big tab is a long job and staff need to keep checking the paper, so it
+           must survive scrolling and interruption.
+           The "buzzes the staff phones" promise below depends on db/034 being
+           applied — until then a staff-placed order reaches open dashboards
+           over realtime only. -->
       <div class="settings-card hidden" id="paperPanel">
-        <span class="field-label">Record an order taken on paper</span>
+        <span class="field-label">Place an order, or record one taken on paper</span>
 
         <fieldset class="field">
           <legend>Has it already been served?</legend>
           <div class="pay-options" id="paperServed">
             <label><input type="radio" name="served" value="no" checked>
-              <span><strong>No — send it to the kitchen</strong><small>Joins the queue as a new order</small></span></label>
+              <span><strong>No — send it to the kitchen</strong><small>Joins the live queue and buzzes the staff phones</small></span></label>
             <label><input type="radio" name="served" value="yes">
               <span><strong>Yes — just record it</strong><small>Goes straight in as delivered</small></span></label>
           </div>
@@ -203,7 +208,7 @@
         <label class="field hidden" id="paperWhenField"><span class="field-label">When was it ordered? <small>Admin only — leave blank for now</small></span>
           <input type="datetime-local" id="paperWhen"></label>
 
-        <button class="btn-primary" type="button" id="paperSaveBtn">Record this order</button>
+        <button class="btn-primary" type="button" id="paperSaveBtn">Send to the kitchen</button>
       </div>
 
       <div id="ordersList"></div>

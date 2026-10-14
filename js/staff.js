@@ -1705,6 +1705,18 @@ $('paperLoc').addEventListener('change', () => {
   if (room) fillPaperRooms();      // in case the first attempt came up empty
 });
 
+// The save button names the outcome, because the two outcomes are not
+// interchangeable: one wakes the kitchen, the other quietly writes history.
+// "Record this order" read like history for both, which is the wrong default
+// to imply when the order has not been cooked yet.
+function paperSaveLabel() {
+  return document.querySelector('input[name="served"]:checked')?.value === 'yes'
+    ? 'Record as delivered'
+    : 'Send to the kitchen';
+}
+function syncPaperSaveLabel() { $('paperSaveBtn').textContent = paperSaveLabel(); }
+$('paperServed').addEventListener('change', syncPaperSaveLabel);
+
 $('paperPay').addEventListener('change', () => {
   const charging = document.querySelector('input[name="ppay"]:checked')?.value === 'room';
   $('paperSignBlock').classList.toggle('hidden', !charging);
@@ -1947,7 +1959,7 @@ $('paperSaveBtn').onclick = async () => {
       : 'Could not save that order. Check your connection and try again.');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Record this order';
+    btn.textContent = paperSaveLabel();
   }
 };
 
@@ -1968,6 +1980,7 @@ function resetPaperForm() {
   document.querySelector('input[name="ppay"][value="cash"]').checked = true;
   $('paperRoomField').classList.add('hidden');
   $('paperSignBlock').classList.add('hidden');
+  syncPaperSaveLabel();
 }
 
 // ── Archive: orders by month (owner only) ───────────────────────────
