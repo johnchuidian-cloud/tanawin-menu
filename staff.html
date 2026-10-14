@@ -132,9 +132,10 @@
            Sits inline on the Orders tab rather than in a modal sheet: entering a
            big tab is a long job and staff need to keep checking the paper, so it
            must survive scrolling and interruption.
-           The "buzzes the staff phones" promise below depends on db/034 being
-           applied — until then a staff-placed order reaches open dashboards
-           over realtime only. -->
+           This copy deliberately does NOT promise a phone alert: db/034 (which
+           makes a staff-placed order send push) is written but not yet applied,
+           so today the order reaches open dashboards over realtime only. Say
+           more here only once that migration is live. -->
       <div class="settings-card hidden" id="paperPanel">
         <span class="field-label">Place an order, or record one taken on paper</span>
 
@@ -142,7 +143,7 @@
           <legend>Has it already been served?</legend>
           <div class="pay-options" id="paperServed">
             <label><input type="radio" name="served" value="no" checked>
-              <span><strong>No — send it to the kitchen</strong><small>Joins the live queue and buzzes the staff phones</small></span></label>
+              <span><strong>No — send it to the kitchen</strong><small>Joins the live queue as a new order</small></span></label>
             <label><input type="radio" name="served" value="yes">
               <span><strong>Yes — just record it</strong><small>Goes straight in as delivered</small></span></label>
           </div>
@@ -235,7 +236,7 @@
       <div class="settings-card">
         <span class="field-label">Add a staff member</span>
         <label class="field"><span class="field-label">Name</span>
-          <input type="text" id="newStaffName" maxlength="40" placeholder="e.g. Rio" autocomplete="off"></label>
+          <input type="text" id="newStaffName" maxlength="40" placeholder="e.g. Ana" autocomplete="off"></label>
         <label class="field"><span class="field-label">Role</span>
           <select id="newStaffRole">
             <option value="staff">Staff — Orders, Menu, Rooms</option>

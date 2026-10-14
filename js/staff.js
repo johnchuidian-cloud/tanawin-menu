@@ -934,7 +934,7 @@ function editOrderForm(o, close) {
              placeholder="From the terminal receipt"></label>
     <label class="field"><span class="field-label">Note</span>
       <input type="text" class="edit-note" maxlength="200" value="${esc(o.note || '')}"></label>
-    <label class="field"><span class="field-label">Why are you changing this? <small>Required — Lexi sees this. Not the reference number.</small></span>
+    <label class="field"><span class="field-label">Why are you changing this? <small>Required — the owner sees this. Not the reference number.</small></span>
       <input type="text" class="edit-reason" maxlength="200" placeholder="e.g. guests actually paid by card"></label>
     <div class="order-actions">
       <button type="button" class="btn-primary edit-save">Save changes</button>
@@ -1051,7 +1051,7 @@ function editOrderForm(o, close) {
       toast('Nothing was different — no change recorded.'); close(); return;
     }
     toast(data.review === 'pending'
-      ? 'Saved. Lexi will see it for approval.'
+      ? 'Saved. The owner will see it for approval.'
       : 'Saved.');
     close();
     await loadOrders();
@@ -1072,7 +1072,7 @@ function editTrail(o) {
   summary.type = 'button';
   summary.className = 'edit-trail-toggle' + (pending ? ' needs-review' : '');
   summary.textContent = pending
-    ? `✎ Edited ${log.length}× · ${pending} waiting for Lexi`
+    ? `✎ Edited ${log.length}× · ${pending} waiting for the owner`
     : `✎ Edited ${log.length}×`;
   wrap.appendChild(summary);
 
@@ -1093,7 +1093,7 @@ function editTrail(o) {
       ? `<span class="edit-state ok">Approved${e.reviewed_by ? ' by ' + esc(e.reviewed_by) : ''}</span>`
       : e.review === 'vetoed'
         ? `<span class="edit-state vetoed">Undone${e.reviewed_by ? ' by ' + esc(e.reviewed_by) : ''}</span>`
-        : '<span class="edit-state pending">Waiting for Lexi</span>';
+        : '<span class="edit-state pending">Waiting for the owner</span>';
     row.innerHTML = `
       <div class="edit-entry-top"><b>${esc(e.by || 'Someone')}</b>
         <span>${esc((e.at || '').replace('T', ' ').slice(0, 16))}</span></div>
@@ -1333,7 +1333,7 @@ $('exportToggle').onclick = () => {
 $('exportBtn').onclick = async () => {
   // Checked again here, not just on the button's visibility: a panel left open
   // across a role change, or a stale DOM, shouldn't still produce a workbook.
-  if (currentRole !== 'admin') { toast('Only Lexi and Rio can download the spreadsheet.'); return; }
+  if (currentRole !== 'admin') { toast('Only owners can download the spreadsheet.'); return; }
   const from = $('exportFrom').value, to = $('exportTo').value;
   if (!from || !to) { toast('Pick both dates.'); return; }
   const btn = $('exportBtn');
