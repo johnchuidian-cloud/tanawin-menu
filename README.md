@@ -18,8 +18,8 @@ Everything shown is made-up data. The dishes, prices, staff, rooms, access codes
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/staff-1-signin.png" width="200" alt="Staff sign-in"><br><sub>Staff sign-in</sub></td>
-    <td align="center"><img src="docs/screenshots/staff-2-orders.png" width="200" alt="Live order and request queue"><br><sub>Orders and guest requests</sub></td>
-    <td align="center"><img src="docs/screenshots/staff-3-archive.png" width="200" alt="Monthly archive"><br><sub>Monthly archive</sub></td>
+    <td align="center"><img src="docs/screenshots/staff-2-orders.png" width="200" alt="Live order queue"><br><sub>Live order queue</sub></td>
+    <td align="center"><img src="docs/screenshots/staff-3-requests.png" width="200" alt="Food orders and guest requests in one queue"><br><sub>Orders and requests, one queue</sub></td>
     <td align="center"><img src="docs/screenshots/staff-4-menu.png" width="200" alt="Menu editor"><br><sub>Menu editor</sub></td>
   </tr>
 </table>
