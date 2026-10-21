@@ -1,5 +1,8 @@
 -- 034: push notifications for manual orders that are actually sent to the kitchen.
 --
+-- APPLIED 2026-10-21 (run by the project owner in the SQL editor, because the
+-- management token was 401 at the time).
+--
 -- db/027 made every manual order silent, on the reasoning that "the staff
 -- member entering it is standing right there" and every open dashboard already
 -- sees it over realtime. That holds for its original use — typing up a paper
